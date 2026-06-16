@@ -152,7 +152,7 @@ var tracking=false, heading=null, rotOffset=0, steps=0;
 var cfg={stepLen:0.70, sens:1.1};
 var wiz="welcome";
 var ptrs=new Map(), gesture=null, pinch=null, multi=false, dragM=null;
-var touchHold=false, holdTimer=null;
+var touchHold=false, holdTimer=null, wakeLock=null;
 
 var dirty=true; function requestDraw(){dirty=true;}
 (function frame(){ if(dirty){dirty=false; draw();} requestAnimationFrame(frame); })();
@@ -233,7 +233,7 @@ function draw(){
   }
   if(path.length>1){ ctx.lineJoin="round";ctx.lineCap="round";
     ctx.strokeStyle="rgba(20,30,45,.55)";ctx.lineWidth=5.5*dpr; strokePath();
-    ctx.strokeStyle="#29abe2";ctx.lineWidth=3*dpr; strokePath(); }
+    ctx.strokeStyle="#29abe2";ctx.lineWidth=3*dpr; strokePath(); drawArrows(); }
   if(startPt) pin(img2scr(startPt),"#222b38","S");
   if(pos){ var s=img2scr(pos);
     if(heading!=null){ var ang=(heading-rotOffset)*Math.PI/180 + viewRot, L=30*dpr;
@@ -243,6 +243,16 @@ function draw(){
 }
 function strokePath(){ ctx.beginPath();
   path.forEach(function(p,i){ var s=img2scr(p); if(i)ctx.lineTo(s.x,s.y); else ctx.moveTo(s.x,s.y); }); ctx.stroke(); }
+function arrowHead(x,y,ang){ var L=8*dpr;
+  ctx.beginPath();
+  ctx.moveTo(x-Math.cos(ang-0.5)*L, y-Math.sin(ang-0.5)*L); ctx.lineTo(x,y);
+  ctx.lineTo(x-Math.cos(ang+0.5)*L, y-Math.sin(ang+0.5)*L); ctx.stroke(); }
+function drawArrows(){
+  ctx.strokeStyle="#222b38"; ctx.lineWidth=2.6*dpr; ctx.lineCap="round";
+  var acc=0, gap=72*dpr, prev=img2scr(path[0]);
+  for(var i=1;i<path.length;i++){ var cur=img2scr(path[i]); var dx=cur.x-prev.x, dy=cur.y-prev.y; var len=Math.hypot(dx,dy);
+    acc+=len; if(len>0.6 && acc>=gap){ acc=0; arrowHead(cur.x,cur.y,Math.atan2(dy,dx)); } prev=cur; }
+}
 
 // ---------- touch ----------
 function pauseIMU(){ touchHold=true; if(holdTimer){clearTimeout(holdTimer);holdTimer=null;} }
@@ -351,9 +361,13 @@ function onStepDetected(){
 
 // ---------- recording ----------
 $("bRec").onclick=toggleRec;
+async function acquireWake(){ try{ if("wakeLock" in navigator){ wakeLock=await navigator.wakeLock.request("screen"); } }catch(_){ } }
+function releaseWake(){ try{ if(wakeLock){ wakeLock.release(); wakeLock=null; } }catch(_){ } }
+document.addEventListener("visibilitychange",function(){ if(document.visibilityState==="visible" && tracking){ acquireWake(); } });
 function toggleRec(){ tracking=!tracking;
   $("bRec").textContent=tracking?"Stoppen":"Starten"; $("bRec").classList.toggle("live",tracking); $("bAnchor").disabled=!tracking;
-  setStatus(tracking?"Aufzeichnung läuft – Bildschirm anlassen.":"Pausiert.","on"); }
+  if(tracking) acquireWake(); else releaseWake();
+  setStatus(tracking?"Aufzeichnung läuft – App offen lassen, Display an.":"Pausiert.","on"); }
 $("bAnchor").onclick=function(){ placeMode="anchor"; flash("Deine echte Position auf dem Plan tippen"); };
 $("bReset").onclick=function(){ if(startPt){pos={x:startPt.x,y:startPt.y};path=[{x:startPt.x,y:startPt.y}];} steps=0; updateReadouts(); requestDraw(); };
 
