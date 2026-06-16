@@ -121,6 +121,10 @@
           <button class="mini" id="bStart" disabled>Auf Plan tippen</button>
         </div>
         <div class="field">
+          <label><span class="seq">5</span>Laufkalibrierung (Schrittlänge + Kurs)</label>
+          <button class="mini" id="bCalib" disabled>Kalibrieren</button>
+        </div>
+        <div class="field">
           <label>Schrittlänge</label>
           <div class="ctl"><input type="number" id="stepLen" value="0.70" min="0.3" max="1.2" step="0.01"> m</div>
         </div>
@@ -133,7 +137,7 @@
           <div class="ctl"><input type="range" id="rot" min="0" max="359" step="1" value="0">
             <span class="val" style="font-family:var(--mono);font-size:13px;color:var(--cyan)" id="rotVal">0°</span></div>
         </div>
-        <div class="note">Maßstab tippt zwei Punkte mit bekanntem Abstand (z. B. eine Türbreite oder ein Vermaßungsmaß). Den Kurs-Offset so einstellen, dass die Laufrichtung auf dem Plan stimmt — ein paar Schritte gehen, dann nachjustieren.</div>
+        <div class="note">Reihenfolge: Sensoren → PDF → Maßstab (zwei Punkte mit bekanntem Abstand) → Startpunkt → Laufkalibrierung. Bei der Laufkalibrierung gehst du vom Startpunkt ca. 5–10 Schritte schnurgerade und tippst dann deinen Endpunkt auf dem Plan — daraus werden Schrittlänge und Kurs automatisch gesetzt. Zoomen mit zwei Fingern, verschieben mit einem Finger. Beim Tippen pausiert die Schrittzählung automatisch.</div>
       </div>
     </details>
 
@@ -165,6 +169,17 @@ let tracking=false;
 let heading=null, rotOffset=0;               // compass deg, plan rotation offset deg
 let steps=0;
 const cfg={stepLen:0.70, sens:1.1};
+// walk-calibration
+let calState="idle";                         // idle|walking|awaitEnd
+let calSteps=0, calHeadings=[], calStartPx=null;
+// multitouch + tap-pause
+const ptrs=new Map(); let gesture=null, pinch=null, multi=false;
+let touchHold=false, holdTimer=null;
+
+// ---------- draw scheduling ----------
+let dirty=true; function requestDraw(){dirty=true;}
+function frame(){ if(dirty){dirty=false; draw();} requestAnimationFrame(frame); }
+requestAnimationFrame(frame);
 
 // ---------- canvas sizing (ResizeObserver keeps buffer matched to box) ----------
 let didFit=false;
@@ -277,30 +292,60 @@ function draw(){
   }
 }
 
-// ---------- tap handling (tap = place, drag = pan) ----------
-let down=null;
-cv.addEventListener("pointerdown",e=>{ down={x:e.clientX,y:e.clientY,t:Date.now(),
-  tx:view.tx,ty:view.ty,moved:false}; cv.setPointerCapture(e.pointerId); });
-cv.addEventListener("pointermove",e=>{ if(!down)return;
-  const dx=e.clientX-down.x, dy=e.clientY-down.y;
-  if(Math.hypot(dx,dy)>6) down.moved=true;
-  view.tx=down.tx+dx*dpr; view.ty=down.ty+dy*dpr; draw(); });
-cv.addEventListener("pointerup",e=>{ if(!down)return;
-  const isTap=!down.moved && Date.now()-down.t<450;
-  if(isTap && mapImg) handleTap(scr2img(e.clientX,e.clientY));
-  down=null; });
+// ---------- touch: 1 finger = pan/tap, 2 fingers = pinch-zoom; IMU pauses while touching ----------
+function pauseIMU(){ touchHold=true; if(holdTimer){clearTimeout(holdTimer);holdTimer=null;} }
+function resumeIMUSoon(){ if(holdTimer)clearTimeout(holdTimer); holdTimer=setTimeout(()=>{touchHold=false;},500); }
+function pdist(a,b){return Math.hypot(a.x-b.x,a.y-b.y);}
+function pmid(a,b){return {x:(a.x+b.x)/2,y:(a.y+b.y)/2};}
+function startPinch(){
+  const a=[...ptrs.values()]; if(a.length<2)return;
+  const m=pmid(a[0],a[1]);
+  pinch={ d:pdist(a[0],a[1]), imgX:(m.x*dpr-view.tx)/view.scale, imgY:(m.y*dpr-view.ty)/view.scale, scale:view.scale };
+}
+function updatePinch(){
+  const a=[...ptrs.values()]; if(a.length<2||!pinch)return;
+  const d=pdist(a[0],a[1]), m=pmid(a[0],a[1]);
+  let ns=pinch.scale*(d/pinch.d); ns=Math.max(0.02,Math.min(40,ns));
+  view.scale=ns; view.tx=m.x*dpr-pinch.imgX*ns; view.ty=m.y*dpr-pinch.imgY*ns; requestDraw();
+}
+cv.addEventListener("pointerdown",e=>{
+  cv.setPointerCapture(e.pointerId); ptrs.set(e.pointerId,{x:e.clientX,y:e.clientY}); pauseIMU();
+  if(ptrs.size===1){ multi=false; gesture={x:e.clientX,y:e.clientY,t:Date.now(),tx:view.tx,ty:view.ty,moved:false}; }
+  else if(ptrs.size===2){ multi=true; gesture=null; startPinch(); }
+});
+cv.addEventListener("pointermove",e=>{
+  if(!ptrs.has(e.pointerId))return; ptrs.set(e.pointerId,{x:e.clientX,y:e.clientY});
+  if(ptrs.size>=2){ updatePinch(); }
+  else if(ptrs.size===1 && gesture){
+    const dx=e.clientX-gesture.x, dy=e.clientY-gesture.y;
+    if(Math.hypot(dx,dy)>6) gesture.moved=true;
+    view.tx=gesture.tx+dx*dpr; view.ty=gesture.ty+dy*dpr; requestDraw();
+  }
+});
+function endPtr(e){
+  if(!ptrs.has(e.pointerId))return; ptrs.delete(e.pointerId);
+  if(ptrs.size===1){ const p=[...ptrs.values()][0];
+    gesture={x:p.x,y:p.y,t:Date.now(),tx:view.tx,ty:view.ty,moved:true}; pinch=null; }
+  else if(ptrs.size===0){
+    if(!multi && gesture && !gesture.moved && Date.now()-gesture.t<450 && mapImg) handleTap(scr2img(e.clientX,e.clientY));
+    gesture=null; pinch=null; multi=false; resumeIMUSoon();
+  }
+}
+cv.addEventListener("pointerup",endPtr);
+cv.addEventListener("pointercancel",endPtr);
 
 function handleTap(p){
+  if(calState==="awaitEnd"){ finishCalib(p); return; }
   if(placeMode==="cal"){
     calPts.push(p);
     if(calPts.length>=2){ calPts=calPts.slice(-2); $("calDistRow").style.display="flex"; flash("Reale Distanz eingeben und „Setzen“"); placeMode="none"; }
     else flash("Zweiten Punkt tippen");
-    draw();
+    requestDraw();
   } else if(placeMode==="start"){
     startPt={...p}; pos={...p}; path=[{...p}]; placeMode="none";
-    enable($("bReset")); maybeEnableTrack(); flash("Startpunkt gesetzt"); draw();
+    enable($("bReset")); maybeEnableTrack(); flash("Startpunkt gesetzt"); requestDraw();
   } else if(placeMode==="anchor"){
-    pos={...p}; path.push({...p}); placeMode="none"; flash("Position korrigiert"); draw();
+    pos={...p}; path.push({...p}); placeMode="none"; flash("Position korrigiert"); requestDraw();
   }
 }
 
@@ -317,7 +362,41 @@ $("bCalApply").onclick=()=>{
 };
 $("bStart").onclick=()=>{ if(!pxPerMeter){flash("Erst Maßstab setzen");return;} placeMode="start"; flash("Startpunkt auf dem Plan tippen"); };
 $("bAnchor").onclick=()=>{ placeMode="anchor"; flash("Deine echte Position auf dem Plan tippen"); };
-$("bReset").onclick=()=>{ if(startPt){pos={...startPt};path=[{...startPt}];} steps=0; updateReadouts(); draw(); };
+$("bReset").onclick=()=>{ if(startPt){pos={...startPt};path=[{...startPt}];} steps=0; updateReadouts(); requestDraw(); };
+
+// walk calibration: walk a straight line from the start point, then tap your end point on the plan
+$("bCalib").onclick=()=>{
+  if(calState==="idle"){
+    if(!pxPerMeter){ flash("Erst Maßstab setzen"); return; }
+    if(!startPt){ flash("Erst Startpunkt setzen"); return; }
+    if(!$("bSensors").disabled){ flash("Erst Sensoren aktivieren"); return; }
+    calState="walking"; calSteps=0; calHeadings=[]; calStartPx={...(pos||startPt)};
+    $("bCalib").textContent="Fertig"; $("setup").open=true;
+    flash("Vom Startpunkt ca. 5–10 Schritte schnurgerade gehen, dann „Fertig“");
+  } else if(calState==="walking"){
+    if(calSteps<3){ flash("Zu wenige Schritte – weiter geradeaus gehen"); return; }
+    calState="awaitEnd"; $("bCalib").textContent="Endpunkt tippen";
+    flash("Tippe deinen jetzigen Standort auf dem Plan");
+  }
+};
+function finishCalib(end){
+  const dx=end.x-calStartPx.x, dy=end.y-calStartPx.y, dpix=Math.hypot(dx,dy);
+  const realDist=dpix/pxPerMeter;
+  if(realDist<0.3||calSteps<3){ flash("Kalibrierung ungültig – erneut versuchen"); calState="idle"; $("bCalib").textContent="Kalibrieren"; return; }
+  let sl=realDist/calSteps; sl=Math.max(0.3,Math.min(1.2,sl));
+  cfg.stepLen=sl; $("stepLen").value=sl.toFixed(2);
+  const planAngle=(Math.atan2(dx,-dy)*180/Math.PI+360)%360;
+  if(calHeadings.length){
+    let sx=0,sy=0; calHeadings.forEach(h=>{sx+=Math.cos(h*Math.PI/180);sy+=Math.sin(h*Math.PI/180);});
+    const avg=(Math.atan2(sy,sx)*180/Math.PI+360)%360;
+    rotOffset=Math.round(((avg-planAngle)%360+360)%360);
+    $("rot").value=rotOffset; $("rotVal").textContent=rotOffset+"°";
+  }
+  pos={...end}; path=[{...calStartPx},{...end}]; steps=0;
+  calState="idle"; $("bCalib").textContent="Kalibrieren"; enable($("bReset")); maybeEnableTrack();
+  setStatus("Kalibriert: Schrittlänge "+sl.toFixed(2).replace(".",",")+" m, Kurs-Offset "+rotOffset+"°.","on");
+  flash("Kalibriert ✓"); updateReadouts(); requestDraw();
+}
 
 $("stepLen").onchange=e=>cfg.stepLen=parseFloat(e.target.value)||0.7;
 $("sens").oninput=e=>cfg.sens=parseFloat(e.target.value);
@@ -343,7 +422,7 @@ $("bSensors").onclick=async ()=>{
 function onOrient(e){
   let h=(typeof e.webkitCompassHeading==="number")?e.webkitCompassHeading
        :(e.alpha!=null? 360-e.alpha : null);
-  if(h!=null){ heading=h; $("rHead").textContent=Math.round(h)+"°"; if(tracking)draw(); }
+  if(h!=null){ heading=h; $("rHead").textContent=Math.round(h)+"°"; if(tracking)requestDraw(); }
 }
 
 // step detection on acceleration magnitude
@@ -351,10 +430,19 @@ let g=9.81, lastStep=0;
 function onMotion(e){
   const a=e.accelerationIncludingGravity||e.acceleration; if(!a)return;
   const m=Math.hypot(a.x||0,a.y||0,a.z||0);
-  g=g*0.92+m*0.08;                 // gravity estimate
+  g=g*0.92+m*0.08;                 // gravity estimate (keep running even while paused)
   const d=m-g;                     // dynamic component
   const now=e.timeStamp||Date.now();
-  if(tracking && d>cfg.sens && now-lastStep>270){ lastStep=now; onStep(); }
+  const active=tracking||calState==="walking";
+  if(active && !touchHold && d>cfg.sens && now-lastStep>270){ lastStep=now; onStepDetected(); }
+}
+function onStepDetected(){
+  if(calState==="walking"){
+    calSteps++; if(heading!=null) calHeadings.push(heading);
+    flash("Kalibrierung – Schritte: "+calSteps);
+    return;
+  }
+  onStep();
 }
 function onStep(){
   if(!pos||!pxPerMeter)return;
@@ -362,7 +450,7 @@ function onStep(){
   const a=((heading||0)-rotOffset)*Math.PI/180;
   const dpx=cfg.stepLen*pxPerMeter;
   pos={x:pos.x+Math.sin(a)*dpx, y:pos.y-Math.cos(a)*dpx};
-  path.push({...pos}); updateReadouts(); draw();
+  path.push({...pos}); updateReadouts(); requestDraw();
 }
 
 // ---------- tracking ----------
@@ -376,7 +464,9 @@ $("bTrack").onclick=()=>{
 };
 function maybeEnableTrack(){
   // sensors are "active" once the activate button has been disabled
-  if(mapImg&&pxPerMeter&&startPt&&$("bSensors").disabled){ enable($("bTrack")); }
+  const sensorsOn=$("bSensors").disabled;
+  if(mapImg&&pxPerMeter&&startPt&&sensorsOn){ enable($("bTrack")); }
+  $("bCalib").disabled = !(pxPerMeter&&startPt&&sensorsOn);
 }
 
 // ---------- ui helpers ----------
