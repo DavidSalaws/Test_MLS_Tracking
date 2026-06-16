@@ -7,481 +7,432 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <style>
   :root{
-    --bg:#10141b; --surface:#1a212c; --surface-2:#222b38; --line:#2e3a4a;
-    --text:#e8edf4; --muted:#8d99ab; --amber:#f5a524; --amber-dim:#7a5a1c;
-    --cyan:#38bdf8; --red:#ef5e5e; --green:#3ecf8e;
-    --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+    --navy:#222b38; --navy-2:#2c3744; --ink:#1d2733; --muted:#6b7785;
+    --cyan:#29abe2; --cyan-d:#1f8cbb;
+    --grey:#bcc3c9; --bg:#eef1f4; --card:#ffffff; --line:#d9dee3; --stage:#1b232e;
     --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+    --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
   }
   *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
-  html,body{margin:0;height:100%;background:var(--bg);color:var(--text);
-    font-family:var(--sans);overscroll-behavior:none;touch-action:none}
-  #app{display:flex;flex-direction:column;height:100dvh}
+  html,body{margin:0;height:100%;background:var(--bg);color:var(--ink);
+    font-family:var(--sans);overscroll-behavior:none}
+  #app{display:flex;flex-direction:column;height:100dvh;position:relative}
 
-  /* readout bar */
-  header{display:flex;gap:1px;background:var(--line);
-    padding-top:env(safe-area-inset-top)}
-  .stat{flex:1;background:var(--bg);padding:10px 6px;text-align:center}
-  .stat .lbl{font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted)}
-  .stat .val{font-family:var(--mono);font-size:19px;font-weight:600;margin-top:2px}
-  .stat .val.amber{color:var(--amber)} .stat .val.cyan{color:var(--cyan)}
-  #status{font-size:11px;color:var(--muted);padding:6px 12px;background:var(--surface);
+  header{display:flex;align-items:stretch;gap:1px;background:var(--line);
+    padding-top:env(safe-area-inset-top);border-bottom:1px solid var(--line)}
+  .stat{flex:1;background:var(--card);padding:9px 4px;text-align:center;min-width:0}
+  .stat .lbl{font-size:10px;letter-spacing:.13em;text-transform:uppercase;color:var(--muted)}
+  .stat .val{font-family:var(--mono);font-size:18px;font-weight:700;margin-top:2px;color:var(--navy);
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .stat .val.cyan{color:var(--cyan-d)}
+  #gear{flex:none;width:46px;background:var(--card);border:none;color:var(--muted);font-size:20px}
+
+  #status{font-size:11px;color:var(--muted);padding:6px 12px;background:var(--card);
     display:flex;align-items:center;gap:7px;border-bottom:1px solid var(--line)}
-  #dot{width:8px;height:8px;border-radius:50%;background:var(--muted);flex:none}
-  #dot.on{background:var(--green)} #dot.err{background:var(--red)}
+  #dot{width:8px;height:8px;border-radius:50%;background:var(--grey);flex:none}
+  #dot.on{background:var(--cyan)} #dot.err{background:#e5564b} #dot.warn{background:#e0a426}
 
-  /* canvas */
-  #stage{position:relative;flex:1;overflow:hidden;background:#0a0d12}
-  canvas{position:absolute;inset:0;width:100%;height:100%;display:block}
-  #hint{position:absolute;left:50%;top:14px;transform:translateX(-50%);
-    background:rgba(245,165,36,.16);border:1px solid var(--amber);color:var(--amber);
+  #stage{position:relative;flex:1;overflow:hidden;background:var(--stage);touch-action:none}
+  #cv{position:absolute;inset:0;width:100%;height:100%;display:block;touch-action:none}
+  #hint{position:absolute;left:50%;top:14px;transform:translateX(-50%);z-index:4;
+    background:rgba(41,171,226,.14);border:1px solid var(--cyan);color:#bfe6f7;
     padding:7px 14px;border-radius:20px;font-size:13px;font-weight:600;
-    pointer-events:none;opacity:0;transition:opacity .2s;text-align:center;max-width:88%}
+    pointer-events:none;opacity:0;transition:opacity .2s;text-align:center;max-width:86%}
   #hint.show{opacity:1}
-  #zoom{position:absolute;right:10px;bottom:10px;display:flex;flex-direction:column;gap:6px}
-  #zoom button{width:42px;height:42px;border-radius:10px;border:1px solid var(--line);
-    background:rgba(26,33,44,.9);color:var(--text);font-size:22px;font-family:var(--mono)}
+  #zoom{position:absolute;right:10px;top:10px;display:flex;flex-direction:column;gap:6px;z-index:4}
+  #zoom button{width:42px;height:42px;border-radius:11px;border:none;
+    background:rgba(255,255,255,.92);color:var(--navy);font-size:21px;font-family:var(--mono);
+    box-shadow:0 1px 4px rgba(0,0,0,.25)}
 
-  /* controls */
-  footer{background:var(--surface);border-top:1px solid var(--line);
-    padding:10px 12px calc(10px + env(safe-area-inset-bottom))}
-  .row{display:flex;gap:8px;margin-bottom:8px}
-  .row:last-child{margin-bottom:0}
-  button.btn{flex:1;border:1px solid var(--line);background:var(--surface-2);color:var(--text);
-    border-radius:11px;padding:13px 8px;font-size:14px;font-weight:600;font-family:var(--sans)}
-  button.btn:disabled{opacity:.38}
-  button.btn.primary{background:var(--amber);color:#1a1205;border-color:var(--amber)}
-  button.btn.live{background:var(--red);color:#fff;border-color:var(--red)}
-  button.btn.ghost{background:transparent}
-  .pill{font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);
-    margin:2px 2px 7px}
-  details{background:var(--surface-2);border:1px solid var(--line);border-radius:11px;
-    margin-bottom:8px;overflow:hidden}
-  summary{padding:11px 13px;font-size:13px;font-weight:600;cursor:pointer;list-style:none;
-    display:flex;justify-content:space-between;align-items:center}
-  summary::-webkit-details-marker{display:none}
-  summary::after{content:"⌄";color:var(--muted);font-size:16px}
-  details[open] summary::after{content:"⌃"}
-  .panel{padding:0 13px 13px}
-  .field{display:flex;align-items:center;justify-content:space-between;gap:10px;
-    padding:9px 0;border-top:1px solid var(--line)}
-  .field:first-child{border-top:none}
-  .field label{font-size:13px;color:var(--muted)}
-  .field .ctl{display:flex;align-items:center;gap:8px}
-  input[type=number]{width:78px;background:var(--bg);border:1px solid var(--line);color:var(--text);
-    border-radius:8px;padding:8px;font-family:var(--mono);font-size:14px;text-align:right}
-  input[type=range]{width:130px;accent-color:var(--amber)}
-  .mini{padding:7px 11px;font-size:12px;border-radius:8px;border:1px solid var(--line);
-    background:var(--surface);color:var(--text);font-weight:600;flex:none}
-  .note{font-size:11px;color:var(--muted);line-height:1.45;margin-top:8px}
-  .seq{font-family:var(--mono);color:var(--amber);margin-right:6px}
+  .sheet{background:var(--card);border-top:1px solid var(--line);
+    border-radius:18px 18px 0 0;box-shadow:0 -6px 24px rgba(20,30,45,.12);
+    padding:16px 16px calc(14px + env(safe-area-inset-bottom));z-index:6}
+  .wzstep{font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--cyan-d);font-weight:700}
+  .wztitle{font-size:19px;font-weight:700;color:var(--navy);margin:3px 0 5px}
+  .wztext{font-size:14px;line-height:1.5;color:var(--muted)}
+  #wzExtra{margin-top:12px}
+  .wzbtns{display:flex;gap:10px;margin-top:16px}
+  .btn{flex:1;border:1.5px solid var(--line);background:var(--card);color:var(--navy);
+    border-radius:13px;padding:14px 10px;font-size:15px;font-weight:700;font-family:var(--sans)}
+  .btn:disabled{opacity:.4}
+  .btn.primary{background:var(--cyan);color:#fff;border-color:var(--cyan)}
+  .btn.live{background:#e5564b;color:#fff;border-color:#e5564b}
+  .btn.ghost{background:transparent;color:var(--muted);border-color:transparent}
+  .big{font-family:var(--mono);font-size:30px;font-weight:700;color:var(--navy);text-align:center;margin:4px 0}
+  input[type=number]{width:100%;background:var(--bg);border:1.5px solid var(--line);color:var(--ink);
+    border-radius:11px;padding:13px;font-family:var(--mono);font-size:17px;text-align:center}
+  .inrow{display:flex;align-items:center;gap:10px}
+  .inrow span{font-size:15px;color:var(--muted)}
+
+  #actions{display:none}
+  #actions .row{display:flex;gap:8px;margin-bottom:8px}#actions .row:last-child{margin-bottom:0}
+
+  /* settings overlay */
+  #scrim{position:absolute;inset:0;background:rgba(20,30,45,.45);z-index:7;display:none}
+  #settings{position:absolute;left:0;right:0;bottom:0;z-index:8;display:none;max-height:80dvh;overflow-y:auto}
+  #settings .field{display:flex;align-items:center;justify-content:space-between;gap:12px;
+    padding:12px 0;border-top:1px solid var(--line)}
+  #settings .field:first-of-type{border-top:none}
+  #settings label{font-size:14px;color:var(--ink)}
+  #settings input[type=number]{width:90px}
+  input[type=range]{accent-color:var(--cyan);width:140px}
+  .shead{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px}
+  .shead b{font-size:17px;color:var(--navy)}
+  .xclose{border:none;background:var(--bg);border-radius:9px;padding:8px 12px;font-weight:700;color:var(--navy)}
+  .mini{padding:11px;border:1.5px solid var(--line);border-radius:11px;background:var(--card);
+    color:var(--navy);font-weight:700;width:100%;font-size:14px;margin-top:8px}
+  input[type=file]{display:none}
 </style>
 </head>
 <body>
 <div id="app">
   <header>
-    <div class="stat"><div class="lbl">Schritte</div><div class="val amber" id="rSteps">0</div></div>
+    <div class="stat"><div class="lbl">Schritte</div><div class="val" id="rSteps">0</div></div>
     <div class="stat"><div class="lbl">Strecke</div><div class="val" id="rDist">0,0 m</div></div>
     <div class="stat"><div class="lbl">Kurs</div><div class="val cyan" id="rHead">–</div></div>
+    <button id="gear" title="Einstellungen">⚙</button>
   </header>
-  <div id="status"><span id="dot"></span><span id="statusText">Bereit. Sensoren aktivieren und Grundriss laden.</span></div>
+  <div id="status"><span id="dot"></span><span id="statusText">Willkommen.</span></div>
 
   <div id="stage">
     <canvas id="cv"></canvas>
     <div id="hint"></div>
     <div id="zoom">
-      <button id="zrot" style="font-size:18px">⟳</button><button id="zin">+</button><button id="zout">−</button><button id="zfit" style="font-size:13px">FIT</button>
+      <button id="zin">+</button><button id="zout">−</button>
+      <button id="zfit" style="font-size:13px">FIT</button><button id="zrot" style="font-size:17px">⟳</button>
     </div>
   </div>
 
-  <footer>
-    <details id="setup" open>
-      <summary>Einrichtung</summary>
-      <div class="panel">
-        <div class="field">
-          <label><span class="seq">1</span>Sensoren freigeben</label>
-          <button class="mini" id="bSensors">Aktivieren</button>
-        </div>
-        <div class="field">
-          <label><span class="seq">2</span>Grundriss (PDF)</label>
-          <button class="mini" id="bPdf">PDF wählen</button>
-          <input type="file" id="fPdf" accept="application/pdf" hidden>
-        </div>
-        <div class="field">
-          <label><span class="seq">3</span>Maßstab kalibrieren</label>
-          <button class="mini" id="bCal" disabled>2 Punkte tippen</button>
-        </div>
-        <div class="field" id="calDistRow" style="display:none">
-          <label>Reale Distanz</label>
-          <div class="ctl"><input type="number" id="calDist" value="5" min="0.1" step="0.1"> m
-            <button class="mini" id="bCalApply">Setzen</button></div>
-        </div>
-        <div class="field">
-          <label><span class="seq">4</span>Startpunkt setzen</label>
-          <button class="mini" id="bStart" disabled>Auf Plan tippen</button>
-        </div>
-        <div class="field">
-          <label><span class="seq">5</span>Laufkalibrierung (Schrittlänge + Kurs)</label>
-          <button class="mini" id="bCalib" disabled>Kalibrieren</button>
-        </div>
-        <div class="field">
-          <label>Schrittlänge</label>
-          <div class="ctl"><input type="number" id="stepLen" value="0.70" min="0.3" max="1.2" step="0.01"> m</div>
-        </div>
-        <div class="field">
-          <label>Empfindlichkeit</label>
-          <div class="ctl"><input type="range" id="sens" min="0.6" max="2.2" step="0.05" value="1.1"></div>
-        </div>
-        <div class="field">
-          <label>Karte drehen (Kurs-Offset)</label>
-          <div class="ctl"><input type="range" id="rot" min="0" max="359" step="1" value="0">
-            <span class="val" style="font-family:var(--mono);font-size:13px;color:var(--cyan)" id="rotVal">0°</span></div>
-        </div>
-        <div class="note">Reihenfolge: Sensoren → PDF → Maßstab (zwei Punkte mit bekanntem Abstand) → Startpunkt → Laufkalibrierung. Bei der Laufkalibrierung gehst du vom Startpunkt ca. 5–10 Schritte schnurgerade und tippst dann deinen Endpunkt auf dem Plan — daraus werden Schrittlänge und Kurs automatisch gesetzt. Zoomen mit zwei Fingern, verschieben mit einem Finger. Beim Tippen pausiert die Schrittzählung automatisch.</div>
-      </div>
-    </details>
+  <!-- guided setup -->
+  <div id="wizard" class="sheet">
+    <div class="wzstep" id="wzStep"></div>
+    <div class="wztitle" id="wzTitle"></div>
+    <div class="wztext" id="wzText"></div>
+    <div id="wzExtra"></div>
+    <div class="wzbtns">
+      <button id="wzSecondary" class="btn ghost"></button>
+      <button id="wzPrimary" class="btn primary"></button>
+    </div>
+  </div>
 
+  <!-- tracking controls -->
+  <div id="actions" class="sheet">
     <div class="row">
-      <button class="btn primary" id="bTrack" disabled>Tracking starten</button>
+      <button class="btn primary" id="bRec">Aufzeichnung starten</button>
       <button class="btn" id="bAnchor" disabled>Position korrigieren</button>
     </div>
-    <div class="row">
-      <button class="btn ghost" id="bReset" disabled>Weg löschen</button>
-    </div>
-  </footer>
+    <div class="row"><button class="btn ghost" id="bReset">Weg löschen</button></div>
+  </div>
+
+  <input type="file" id="fPdf" accept="application/pdf">
+
+  <!-- settings -->
+  <div id="scrim"></div>
+  <div id="settings" class="sheet">
+    <div class="shead"><b>Einstellungen</b><button class="xclose" id="sClose">Fertig</button></div>
+    <div class="field"><label>Schrittlänge</label>
+      <div class="inrow"><input type="number" id="stepLen" value="0.70" min="0.3" max="1.2" step="0.01"><span>m</span></div></div>
+    <div class="field"><label>Empfindlichkeit (Schritte)</label>
+      <input type="range" id="sens" min="0.6" max="2.2" step="0.05" value="1.1"></div>
+    <div class="field"><label>Karte drehen (Kurs-Offset)</label>
+      <div class="inrow"><input type="range" id="rot" min="0" max="359" step="1" value="0"><span id="rotVal" style="font-family:var(--mono);color:var(--cyan-d)">0°</span></div></div>
+    <button class="mini" id="bRecalib">Laufkalibrierung wiederholen</button>
+    <button class="mini" id="bRestart">Einrichtung neu starten</button>
+  </div>
 </div>
 
 <script>
 "use strict";
-const $=id=>document.getElementById(id);
-const dpr=Math.min(window.devicePixelRatio||1,2.5);
-const cv=$("cv"), ctx=cv.getContext("2d");
+var $=function(id){return document.getElementById(id);};
+var dpr=Math.min(window.devicePixelRatio||1,2.5);
+var cv=$("cv"), ctx=cv.getContext("2d");
 
 // ---------- state ----------
-let mapImg=null, imgW=0, imgH=0;            // rendered PDF page (offscreen canvas)
-let view={scale:1,tx:0,ty:0};
-let pxPerMeter=null;                         // from calibration (image px per meter)
-let path=[];                                 // points in image-space {x,y}
-let startPt=null, pos=null;
-let calPts=[];                               // calibration taps
-let placeMode="none";                        // none|cal|start|anchor
-let tracking=false;
-let heading=null, rotOffset=0;               // compass deg, plan rotation offset deg
-let steps=0;
-const cfg={stepLen:0.70, sens:1.1};
-// walk-calibration
-let calState="idle";                         // idle|walking|awaitEnd
-let calSteps=0, calHeadings=[], calStartPx=null;
-// multitouch + tap-pause
-const ptrs=new Map(); let gesture=null, pinch=null, multi=false;
-let touchHold=false, holdTimer=null;
+var mapImg=null, imgW=0, imgH=0;
+var view={scale:1,tx:0,ty:0}, didFit=false;
+var pxPerMeter=null, lastCalDist=5;
+var path=[], startPt=null, pos=null, calPts=[];
+var placeMode="none";              // none|cal|start|anchor
+var calState="idle";               // idle|walking|awaitEnd
+var calSteps=0, calHeadings=[], calStartPx=null;
+var tracking=false, heading=null, rotOffset=0, steps=0;
+var cfg={stepLen:0.70, sens:1.1};
+var wiz="welcome";
+// touch
+var ptrs=new Map(), gesture=null, pinch=null, multi=false, dragM=null;
+var touchHold=false, holdTimer=null;
 
-// ---------- draw scheduling ----------
-let dirty=true; function requestDraw(){dirty=true;}
-function frame(){ if(dirty){dirty=false; draw();} requestAnimationFrame(frame); }
-requestAnimationFrame(frame);
+// ---------- draw scheduler ----------
+var dirty=true; function requestDraw(){dirty=true;}
+(function frame(){ if(dirty){dirty=false; draw();} requestAnimationFrame(frame); })();
 
-// ---------- canvas sizing (ResizeObserver keeps buffer matched to box) ----------
-let didFit=false;
+// ---------- sizing ----------
 function syncSize(){
-  const r=$("stage").getBoundingClientRect();
-  const w=Math.max(1,Math.round(r.width*dpr)), h=Math.max(1,Math.round(r.height*dpr));
+  var r=$("stage").getBoundingClientRect();
+  var w=Math.max(1,Math.round(r.width*dpr)), h=Math.max(1,Math.round(r.height*dpr));
   if(cv.width!==w||cv.height!==h){ cv.width=w; cv.height=h; }
-  if(mapImg && !didFit){ fit(); didFit=true; } else { draw(); }
+  if(mapImg && !didFit){ fit(); didFit=true; } else requestDraw();
 }
 if(window.ResizeObserver){ new ResizeObserver(syncSize).observe($("stage")); }
 window.addEventListener("resize",syncSize);
-window.addEventListener("orientationchange",()=>setTimeout(syncSize,300));
+window.addEventListener("orientationchange",function(){setTimeout(syncSize,300);});
 
 // ---------- PDF ----------
-$("bPdf").onclick=()=>$("fPdf").click();
-$("fPdf").onchange=async e=>{
-  const f=e.target.files[0]; if(!f) return;
+$("fPdf").onchange=async function(e){
+  var f=e.target.files[0]; if(!f) return;
   setStatus("PDF wird geladen …");
   try{
     pdfjsLib.GlobalWorkerOptions.workerSrc="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
-    const buf=await f.arrayBuffer();
-    const pdf=await pdfjsLib.getDocument({data:buf}).promise;
-    const page=await pdf.getPage(1);
-    const base=page.getViewport({scale:1});
-    const target=Math.min(2200, Math.max(1400, base.width)); // render resolution
-    const rs=target/base.width;
-    const vp=page.getViewport({scale:rs});
-    const off=document.createElement("canvas");
+    var buf=await f.arrayBuffer();
+    var pdf=await pdfjsLib.getDocument({data:buf}).promise;
+    var page=await pdf.getPage(1);
+    var base=page.getViewport({scale:1});
+    var rs=Math.min(2200,Math.max(1400,base.width))/base.width;
+    var vp=page.getViewport({scale:rs});
+    var off=document.createElement("canvas");
     off.width=Math.round(vp.width); off.height=Math.round(vp.height);
     await page.render({canvasContext:off.getContext("2d"),viewport:vp}).promise;
-    mapImg=off; imgW=off.width; imgH=off.height;
-    fit(); didFit=true; enable($("bCal")); 
-    setStatus("Grundriss geladen. Jetzt Maßstab kalibrieren.");
+    mapImg=off; imgW=off.width; imgH=off.height; fit(); didFit=true;
+    setStatus("Grundriss geladen.","on");
+    if(wiz==="pdf") wizGo("scale");
   }catch(err){ setStatus("PDF konnte nicht geladen werden: "+err.message,"err"); }
 };
 
-// ---------- view helpers ----------
-function fit(){
-  if(!mapImg) return;
-  const cw=cv.width, ch=cv.height;
-  view.scale=Math.min(cw/imgW, ch/imgH)*0.95;
-  view.tx=(cw-imgW*view.scale)/2;
-  view.ty=(ch-imgH*view.scale)/2;
-  draw();
-}
+// ---------- view ----------
+function fit(){ if(!mapImg)return;
+  view.scale=Math.min(cv.width/imgW, cv.height/imgH)*0.95;
+  view.tx=(cv.width-imgW*view.scale)/2; view.ty=(cv.height-imgH*view.scale)/2; requestDraw(); }
 function img2scr(p){ return {x:p.x*view.scale+view.tx, y:p.y*view.scale+view.ty}; }
-function scr2img(cx,cy){ const r=cv.getBoundingClientRect();
+function scr2img(cx,cy){ var r=cv.getBoundingClientRect();
   return {x:((cx-r.left)*dpr-view.tx)/view.scale, y:((cy-r.top)*dpr-view.ty)/view.scale}; }
-$("zin").onclick=()=>zoomAt(1.3); $("zout").onclick=()=>zoomAt(1/1.3); $("zfit").onclick=fit;
-$("zrot").onclick=rotateImg;
-function zoomAt(f){
-  const cx=cv.width/2, cy=cv.height/2;
-  view.tx=cx-(cx-view.tx)*f; view.ty=cy-(cy-view.ty)*f; view.scale*=f; draw();
-}
-function rotateImg(){
-  if(!mapImg) return;
-  const r=document.createElement("canvas");
-  r.width=imgH; r.height=imgW;
-  const c=r.getContext("2d");
-  c.translate(r.width/2,r.height/2); c.rotate(Math.PI/2); c.drawImage(mapImg,-imgW/2,-imgH/2);
+$("zin").onclick=function(){zoomAt(1.3);}; $("zout").onclick=function(){zoomAt(1/1.3);};
+$("zfit").onclick=fit; $("zrot").onclick=rotateImg;
+function zoomAt(f){ var cx=cv.width/2, cy=cv.height/2;
+  view.tx=cx-(cx-view.tx)*f; view.ty=cy-(cy-view.ty)*f; view.scale*=f; requestDraw(); }
+function rotateImg(){ if(!mapImg)return;
+  var r=document.createElement("canvas"); r.width=imgH; r.height=imgW;
+  var c=r.getContext("2d"); c.translate(r.width/2,r.height/2); c.rotate(Math.PI/2); c.drawImage(mapImg,-imgW/2,-imgH/2);
   mapImg=r; imgW=r.width; imgH=r.height;
-  // placements were in old coordinates -> reset
   calPts=[]; pxPerMeter=null; startPt=null; pos=null; path=[]; steps=0;
-  $("calDistRow").style.display="none";
-  $("bStart").disabled=true; $("bTrack").disabled=true; $("bReset").disabled=true;
-  if(tracking){ $("bTrack").click(); }
-  updateReadouts(); fit(); flash("Plan gedreht – Maßstab neu setzen");
+  if(tracking) toggleRec();
+  updateReadouts(); fit(); flash("Plan gedreht – Einrichtung neu starten"); wizGo("scale");
 }
 
 // ---------- drawing ----------
 function pin(s,color,label){
-  ctx.lineWidth=4*dpr; ctx.strokeStyle="rgba(10,13,18,.55)";
-  ctx.beginPath();ctx.arc(s.x,s.y,10*dpr,0,7);ctx.stroke();      // dark halo for contrast on white
+  ctx.lineWidth=4*dpr; ctx.strokeStyle="rgba(20,30,45,.45)";
+  ctx.beginPath();ctx.arc(s.x,s.y,10*dpr,0,7);ctx.stroke();
   ctx.fillStyle=color;ctx.beginPath();ctx.arc(s.x,s.y,8.5*dpr,0,7);ctx.fill();
-  ctx.lineWidth=2.5*dpr;ctx.strokeStyle="#fff";ctx.stroke();      // white ring
-  if(label){ ctx.fillStyle="#0a0d12";ctx.font="bold "+(12*dpr)+"px sans-serif";
+  ctx.lineWidth=2.5*dpr;ctx.strokeStyle="#fff";ctx.stroke();
+  if(label){ ctx.fillStyle="#fff";ctx.font="bold "+(12*dpr)+"px sans-serif";
     ctx.textAlign="center";ctx.textBaseline="middle";ctx.fillText(label,s.x,s.y); }
 }
 function draw(){
   ctx.clearRect(0,0,cv.width,cv.height);
-  if(mapImg){
-    ctx.imageSmoothingQuality="high";
-    ctx.drawImage(mapImg,view.tx,view.ty,imgW*view.scale,imgH*view.scale);
-  }
-  // calibration
+  if(mapImg){ ctx.imageSmoothingQuality="high";
+    ctx.drawImage(mapImg,view.tx,view.ty,imgW*view.scale,imgH*view.scale); }
   if(calPts.length){
-    if(calPts.length===2){ const a=img2scr(calPts[0]),b=img2scr(calPts[1]);
-      ctx.strokeStyle="#38bdf8"; ctx.lineWidth=2.5*dpr; ctx.setLineDash([6*dpr,5*dpr]);
-      ctx.beginPath();ctx.moveTo(a.x,a.y);ctx.lineTo(b.x,b.y);ctx.stroke(); ctx.setLineDash([]); }
-    calPts.forEach((p,i)=>pin(img2scr(p),"#38bdf8",String(i+1)));
+    if(calPts.length===2){ var a=img2scr(calPts[0]),b=img2scr(calPts[1]);
+      ctx.strokeStyle="#222b38";ctx.lineWidth=2.5*dpr;ctx.setLineDash([6*dpr,5*dpr]);
+      ctx.beginPath();ctx.moveTo(a.x,a.y);ctx.lineTo(b.x,b.y);ctx.stroke();ctx.setLineDash([]); }
+    calPts.forEach(function(p,i){ pin(img2scr(p),"#222b38",String(i+1)); });
   }
-  // path
   if(path.length>1){
-    ctx.strokeStyle="#f5a524";
-    ctx.lineWidth=3.5*dpr;ctx.lineJoin="round";ctx.lineCap="round";
-    ctx.beginPath();
-    path.forEach((p,i)=>{const s=img2scr(p); i?ctx.lineTo(s.x,s.y):ctx.moveTo(s.x,s.y);});
-    ctx.stroke();
+    ctx.lineJoin="round";ctx.lineCap="round";
+    ctx.strokeStyle="rgba(20,30,45,.55)";ctx.lineWidth=5.5*dpr; strokePath();
+    ctx.strokeStyle="#29abe2";ctx.lineWidth=3*dpr; strokePath();
   }
-  if(startPt) pin(img2scr(startPt),"#3ecf8e","S");
-  // current position + heading needle
+  if(startPt) pin(img2scr(startPt),"#222b38","S");
   if(pos){
-    const s=img2scr(pos);
-    if(heading!=null){
-      const a=(heading-rotOffset)*Math.PI/180, L=30*dpr;
-      ctx.strokeStyle="#38bdf8";ctx.lineWidth=3.5*dpr;ctx.lineCap="round";
-      ctx.beginPath();ctx.moveTo(s.x,s.y);ctx.lineTo(s.x+Math.sin(a)*L,s.y-Math.cos(a)*L);ctx.stroke();
-    }
-    pin(s,"#f5a524",null);
+    var s=img2scr(pos);
+    if(heading!=null){ var ang=(heading-rotOffset)*Math.PI/180, L=30*dpr;
+      ctx.strokeStyle="#222b38";ctx.lineWidth=3.5*dpr;ctx.lineCap="round";
+      ctx.beginPath();ctx.moveTo(s.x,s.y);ctx.lineTo(s.x+Math.sin(ang)*L,s.y-Math.cos(ang)*L);ctx.stroke(); }
+    pin(s,"#29abe2",null);
   }
 }
+function strokePath(){ ctx.beginPath();
+  path.forEach(function(p,i){ var s=img2scr(p); if(i)ctx.lineTo(s.x,s.y); else ctx.moveTo(s.x,s.y); });
+  ctx.stroke(); }
 
-// ---------- touch: 1 finger = pan/tap, 2 fingers = pinch-zoom; IMU pauses while touching ----------
+// ---------- touch: 1 finger = pan/tap/drag-marker, 2 = pinch; IMU pauses while touching ----------
 function pauseIMU(){ touchHold=true; if(holdTimer){clearTimeout(holdTimer);holdTimer=null;} }
-function resumeIMUSoon(){ if(holdTimer)clearTimeout(holdTimer); holdTimer=setTimeout(()=>{touchHold=false;},500); }
-function pdist(a,b){return Math.hypot(a.x-b.x,a.y-b.y);}
-function pmid(a,b){return {x:(a.x+b.x)/2,y:(a.y+b.y)/2};}
-function startPinch(){
-  const a=[...ptrs.values()]; if(a.length<2)return;
-  const m=pmid(a[0],a[1]);
-  pinch={ d:pdist(a[0],a[1]), imgX:(m.x*dpr-view.tx)/view.scale, imgY:(m.y*dpr-view.ty)/view.scale, scale:view.scale };
+function resumeIMUSoon(){ if(holdTimer)clearTimeout(holdTimer); holdTimer=setTimeout(function(){touchHold=false;},500); }
+function pd(a,b){return Math.hypot(a.x-b.x,a.y-b.y);}
+function pm(a,b){return {x:(a.x+b.x)/2,y:(a.y+b.y)/2};}
+function hitMarker(cx,cy){
+  if(placeMode!=="none"||calState!=="idle") return null;
+  var r=cv.getBoundingClientRect(), bx=(cx-r.left)*dpr, by=(cy-r.top)*dpr, R=26*dpr, s;
+  if(startPt){ s=img2scr(startPt); if(Math.hypot(s.x-bx,s.y-by)<R) return {t:"start"}; }
+  for(var i=calPts.length-1;i>=0;i--){ s=img2scr(calPts[i]); if(Math.hypot(s.x-bx,s.y-by)<R) return {t:"cal",i:i}; }
+  return null;
 }
-function updatePinch(){
-  const a=[...ptrs.values()]; if(a.length<2||!pinch)return;
-  const d=pdist(a[0],a[1]), m=pmid(a[0],a[1]);
-  let ns=pinch.scale*(d/pinch.d); ns=Math.max(0.02,Math.min(40,ns));
-  view.scale=ns; view.tx=m.x*dpr-pinch.imgX*ns; view.ty=m.y*dpr-pinch.imgY*ns; requestDraw();
-}
-cv.addEventListener("pointerdown",e=>{
+function startPinch(){ var a=[].concat(Array.from(ptrs.values())); if(a.length<2)return;
+  var m=pm(a[0],a[1]); pinch={d:pd(a[0],a[1]),imgX:(m.x*dpr-view.tx)/view.scale,imgY:(m.y*dpr-view.ty)/view.scale,scale:view.scale}; }
+function updatePinch(){ var a=Array.from(ptrs.values()); if(a.length<2||!pinch)return;
+  var d=pd(a[0],a[1]), m=pm(a[0],a[1]); var ns=Math.max(0.02,Math.min(40,pinch.scale*(d/pinch.d)));
+  view.scale=ns; view.tx=m.x*dpr-pinch.imgX*ns; view.ty=m.y*dpr-pinch.imgY*ns; requestDraw(); }
+cv.addEventListener("pointerdown",function(e){
   cv.setPointerCapture(e.pointerId); ptrs.set(e.pointerId,{x:e.clientX,y:e.clientY}); pauseIMU();
-  if(ptrs.size===1){ multi=false; gesture={x:e.clientX,y:e.clientY,t:Date.now(),tx:view.tx,ty:view.ty,moved:false}; }
-  else if(ptrs.size===2){ multi=true; gesture=null; startPinch(); }
+  if(ptrs.size===1){ multi=false; var h=hitMarker(e.clientX,e.clientY);
+    if(h){ dragM=h; gesture=null; }
+    else { dragM=null; gesture={x:e.clientX,y:e.clientY,t:Date.now(),tx:view.tx,ty:view.ty,moved:false}; }
+  } else if(ptrs.size===2){ multi=true; gesture=null; dragM=null; startPinch(); }
 });
-cv.addEventListener("pointermove",e=>{
+cv.addEventListener("pointermove",function(e){
   if(!ptrs.has(e.pointerId))return; ptrs.set(e.pointerId,{x:e.clientX,y:e.clientY});
-  if(ptrs.size>=2){ updatePinch(); }
-  else if(ptrs.size===1 && gesture){
-    const dx=e.clientX-gesture.x, dy=e.clientY-gesture.y;
-    if(Math.hypot(dx,dy)>6) gesture.moved=true;
-    view.tx=gesture.tx+dx*dpr; view.ty=gesture.ty+dy*dpr; requestDraw();
+  if(ptrs.size>=2){ updatePinch(); return; }
+  if(dragM){ var p=scr2img(e.clientX,e.clientY);
+    if(dragM.t==="start"){ startPt={x:p.x,y:p.y}; if(!tracking){ pos={x:p.x,y:p.y}; if(path.length) path[0]={x:p.x,y:p.y}; else path=[{x:p.x,y:p.y}]; } }
+    else { calPts[dragM.i]={x:p.x,y:p.y}; }
+    requestDraw(); return;
   }
+  if(gesture){ var dx=e.clientX-gesture.x, dy=e.clientY-gesture.y;
+    if(Math.hypot(dx,dy)>6) gesture.moved=true;
+    view.tx=gesture.tx+dx*dpr; view.ty=gesture.ty+dy*dpr; requestDraw(); }
 });
 function endPtr(e){
   if(!ptrs.has(e.pointerId))return; ptrs.delete(e.pointerId);
-  if(ptrs.size===1){ const p=[...ptrs.values()][0];
-    gesture={x:p.x,y:p.y,t:Date.now(),tx:view.tx,ty:view.ty,moved:true}; pinch=null; }
+  if(ptrs.size===1){ var p=Array.from(ptrs.values())[0];
+    gesture={x:p.x,y:p.y,t:Date.now(),tx:view.tx,ty:view.ty,moved:true}; pinch=null; dragM=null; }
   else if(ptrs.size===0){
-    if(!multi && gesture && !gesture.moved && Date.now()-gesture.t<450 && mapImg) handleTap(scr2img(e.clientX,e.clientY));
+    if(dragM){ commitDrag(); dragM=null; }
+    else if(!multi && gesture && !gesture.moved && Date.now()-gesture.t<450 && mapImg){ handleTap(scr2img(e.clientX,e.clientY)); }
     gesture=null; pinch=null; multi=false; resumeIMUSoon();
   }
 }
-cv.addEventListener("pointerup",endPtr);
-cv.addEventListener("pointercancel",endPtr);
+cv.addEventListener("pointerup",endPtr); cv.addEventListener("pointercancel",endPtr);
+function commitDrag(){
+  if(dragM.t==="cal" && pxPerMeter!=null && calPts.length===2 && lastCalDist>0){
+    var dpx=Math.hypot(calPts[0].x-calPts[1].x,calPts[0].y-calPts[1].y); pxPerMeter=dpx/lastCalDist;
+  }
+  flash("Position angepasst");
+}
 
 function handleTap(p){
   if(calState==="awaitEnd"){ finishCalib(p); return; }
   if(placeMode==="cal"){
     calPts.push(p);
-    if(calPts.length>=2){ calPts=calPts.slice(-2); $("calDistRow").style.display="flex"; flash("Reale Distanz eingeben und „Setzen“"); placeMode="none"; }
-    else flash("Zweiten Punkt tippen");
+    if(calPts.length>=2){ calPts=calPts.slice(-2); placeMode="none"; if(wiz==="scale") wizGo("scaledist"); }
+    else flash("Punkt 2 tippen");
     requestDraw();
   } else if(placeMode==="start"){
-    startPt={...p}; pos={...p}; path=[{...p}]; placeMode="none";
-    enable($("bReset")); maybeEnableTrack(); flash("Startpunkt gesetzt"); requestDraw();
+    startPt={x:p.x,y:p.y}; pos={x:p.x,y:p.y}; path=[{x:p.x,y:p.y}]; placeMode="none";
+    if(wiz==="start") wizGo("calibwalk"); requestDraw();
   } else if(placeMode==="anchor"){
-    pos={...p}; path.push({...p}); placeMode="none"; flash("Position korrigiert"); requestDraw();
+    pos={x:p.x,y:p.y}; path.push({x:p.x,y:p.y}); placeMode="none"; flash("Position korrigiert"); requestDraw();
   }
 }
 
-// ---------- setup buttons ----------
-$("bCal").onclick=()=>{ calPts=[]; $("calDistRow").style.display="none"; placeMode="cal"; flash("Ersten Punkt auf dem Plan tippen"); };
-$("bCalApply").onclick=()=>{
-  if(calPts.length<2)return;
-  const dpx=Math.hypot(calPts[0].x-calPts[1].x, calPts[0].y-calPts[1].y);
-  const m=parseFloat($("calDist").value);
-  if(!(m>0)||!(dpx>0)){flash("Ungültige Distanz");return;}
-  pxPerMeter=dpx/m; enable($("bStart"));
-  setStatus("Maßstab: "+pxPerMeter.toFixed(1)+" px/m. Jetzt Startpunkt setzen.");
-  flash("Maßstab gesetzt"); maybeEnableTrack();
-};
-$("bStart").onclick=()=>{ if(!pxPerMeter){flash("Erst Maßstab setzen");return;} placeMode="start"; flash("Startpunkt auf dem Plan tippen"); };
-$("bAnchor").onclick=()=>{ placeMode="anchor"; flash("Deine echte Position auf dem Plan tippen"); };
-$("bReset").onclick=()=>{ if(startPt){pos={...startPt};path=[{...startPt}];} steps=0; updateReadouts(); requestDraw(); };
-
-// walk calibration: walk a straight line from the start point, then tap your end point on the plan
-$("bCalib").onclick=()=>{
-  if(calState==="idle"){
-    if(!pxPerMeter){ flash("Erst Maßstab setzen"); return; }
-    if(!startPt){ flash("Erst Startpunkt setzen"); return; }
-    if(!$("bSensors").disabled){ flash("Erst Sensoren aktivieren"); return; }
-    calState="walking"; calSteps=0; calHeadings=[]; calStartPx={...(pos||startPt)};
-    $("bCalib").textContent="Fertig"; $("setup").open=true;
-    flash("Vom Startpunkt ca. 5–10 Schritte schnurgerade gehen, dann „Fertig“");
-  } else if(calState==="walking"){
-    if(calSteps<3){ flash("Zu wenige Schritte – weiter geradeaus gehen"); return; }
-    calState="awaitEnd"; $("bCalib").textContent="Endpunkt tippen";
-    flash("Tippe deinen jetzigen Standort auf dem Plan");
-  }
-};
+// ---------- scale + calibration math ----------
+function applyScale(){
+  if(calPts.length<2){ flash("Erst zwei Punkte tippen"); return false; }
+  var dpx=Math.hypot(calPts[0].x-calPts[1].x,calPts[0].y-calPts[1].y), m=parseFloat($("wzDist").value);
+  if(!(m>0)||!(dpx>0)){ flash("Ungültige Distanz"); return false; }
+  pxPerMeter=dpx/m; lastCalDist=m; return true;
+}
 function finishCalib(end){
-  const dx=end.x-calStartPx.x, dy=end.y-calStartPx.y, dpix=Math.hypot(dx,dy);
-  const realDist=dpix/pxPerMeter;
-  if(realDist<0.3||calSteps<3){ flash("Kalibrierung ungültig – erneut versuchen"); calState="idle"; $("bCalib").textContent="Kalibrieren"; return; }
-  let sl=realDist/calSteps; sl=Math.max(0.3,Math.min(1.2,sl));
-  cfg.stepLen=sl; $("stepLen").value=sl.toFixed(2);
-  const planAngle=(Math.atan2(dx,-dy)*180/Math.PI+360)%360;
-  if(calHeadings.length){
-    let sx=0,sy=0; calHeadings.forEach(h=>{sx+=Math.cos(h*Math.PI/180);sy+=Math.sin(h*Math.PI/180);});
-    const avg=(Math.atan2(sy,sx)*180/Math.PI+360)%360;
-    rotOffset=Math.round(((avg-planAngle)%360+360)%360);
-    $("rot").value=rotOffset; $("rotVal").textContent=rotOffset+"°";
-  }
-  pos={...end}; path=[{...calStartPx},{...end}]; steps=0;
-  calState="idle"; $("bCalib").textContent="Kalibrieren"; enable($("bReset")); maybeEnableTrack();
-  setStatus("Kalibriert: Schrittlänge "+sl.toFixed(2).replace(".",",")+" m, Kurs-Offset "+rotOffset+"°.","on");
-  flash("Kalibriert ✓"); updateReadouts(); requestDraw();
+  var dx=end.x-calStartPx.x, dy=end.y-calStartPx.y, dpix=Math.hypot(dx,dy), realDist=dpix/pxPerMeter;
+  if(realDist<0.3||calSteps<3){ flash("Kalibrierung ungültig – erneut versuchen"); wizGo("calibwalk"); return; }
+  var sl=Math.max(0.3,Math.min(1.2,realDist/calSteps)); cfg.stepLen=sl; $("stepLen").value=sl.toFixed(2);
+  var planAngle=(Math.atan2(dx,-dy)*180/Math.PI+360)%360;
+  if(calHeadings.length){ var sx=0,sy=0;
+    calHeadings.forEach(function(h){ sx+=Math.cos(h*Math.PI/180); sy+=Math.sin(h*Math.PI/180); });
+    var avg=(Math.atan2(sy,sx)*180/Math.PI+360)%360;
+    rotOffset=Math.round(((avg-planAngle)%360+360)%360); $("rot").value=rotOffset; $("rotVal").textContent=rotOffset+"°"; }
+  pos={x:end.x,y:end.y}; path=[{x:calStartPx.x,y:calStartPx.y},{x:end.x,y:end.y}]; steps=0;
+  setStatus("Kalibriert: "+sl.toFixed(2).replace(".",",")+" m/Schritt, Kurs-Offset "+rotOffset+"°.","on");
+  updateReadouts(); wizGo("done");
 }
-
-$("stepLen").onchange=e=>cfg.stepLen=parseFloat(e.target.value)||0.7;
-$("sens").oninput=e=>cfg.sens=parseFloat(e.target.value);
-$("rot").oninput=e=>{ rotOffset=parseInt(e.target.value); $("rotVal").textContent=rotOffset+"°"; draw(); };
 
 // ---------- sensors ----------
-$("bSensors").onclick=async ()=>{
-  if(!window.isSecureContext){ setStatus("Sensoren brauchen HTTPS. Seite über https:// öffnen.","err"); return; }
+async function startSensors(){
+  if(!window.isSecureContext){ setStatus("Sensoren brauchen HTTPS – Seite über https:// öffnen.","err"); flash("HTTPS nötig"); return false; }
   try{
-    if(typeof DeviceMotionEvent!=="undefined" && DeviceMotionEvent.requestPermission){
-      const m=await DeviceMotionEvent.requestPermission();
-      if(m!=="granted"){ setStatus("Bewegungszugriff abgelehnt.","err"); return; }
-    }
-    if(typeof DeviceOrientationEvent!=="undefined" && DeviceOrientationEvent.requestPermission){
-      try{ await DeviceOrientationEvent.requestPermission(); }catch(_){}
-    }
+    if(window.DeviceMotionEvent&&DeviceMotionEvent.requestPermission){ var r=await DeviceMotionEvent.requestPermission(); if(r!=="granted"){ flash("Bewegungszugriff abgelehnt"); return false; } }
+    if(window.DeviceOrientationEvent&&DeviceOrientationEvent.requestPermission){ try{await DeviceOrientationEvent.requestPermission();}catch(_){ } }
     window.addEventListener("devicemotion",onMotion,true);
     window.addEventListener("deviceorientation",onOrient,true);
-    $("bSensors").textContent="Aktiv"; $("bSensors").disabled=true;
-    setStatus("Sensoren aktiv.","on"); maybeEnableTrack();
-  }catch(err){ setStatus("Sensorfehler: "+err.message,"err"); }
-};
-function onOrient(e){
-  let h=(typeof e.webkitCompassHeading==="number")?e.webkitCompassHeading
-       :(e.alpha!=null? 360-e.alpha : null);
-  if(h!=null){ heading=h; $("rHead").textContent=Math.round(h)+"°"; if(tracking)requestDraw(); }
+    setStatus("Sensoren aktiv.","on"); return true;
+  }catch(err){ setStatus("Sensorfehler: "+err.message,"err"); return false; }
 }
-
-// step detection on acceleration magnitude
-let g=9.81, lastStep=0;
-function onMotion(e){
-  const a=e.accelerationIncludingGravity||e.acceleration; if(!a)return;
-  const m=Math.hypot(a.x||0,a.y||0,a.z||0);
-  g=g*0.92+m*0.08;                 // gravity estimate (keep running even while paused)
-  const d=m-g;                     // dynamic component
-  const now=e.timeStamp||Date.now();
-  const active=tracking||calState==="walking";
-  if(active && !touchHold && d>cfg.sens && now-lastStep>270){ lastStep=now; onStepDetected(); }
-}
+function onOrient(e){ var h=(typeof e.webkitCompassHeading==="number")?e.webkitCompassHeading:(e.alpha!=null?360-e.alpha:null);
+  if(h!=null){ heading=h; $("rHead").textContent=Math.round(h)+"°"; if(tracking)requestDraw(); } }
+var g=9.81, lastStep=0;
+function onMotion(e){ var a=e.accelerationIncludingGravity||e.acceleration; if(!a)return;
+  var m=Math.hypot(a.x||0,a.y||0,a.z||0); g=g*0.92+m*0.08; var d=m-g; var now=e.timeStamp||Date.now();
+  var active=tracking||calState==="walking";
+  if(active && !touchHold && d>cfg.sens && now-lastStep>270){ lastStep=now; onStepDetected(); } }
 function onStepDetected(){
-  if(calState==="walking"){
-    calSteps++; if(heading!=null) calHeadings.push(heading);
-    flash("Kalibrierung – Schritte: "+calSteps);
-    return;
+  if(calState==="walking"){ calSteps++; if(heading!=null) calHeadings.push(heading);
+    if($("wzSteps")) $("wzSteps").textContent=calSteps; if($("wzPrimary")&&calSteps>=3) $("wzPrimary").disabled=false; return; }
+  if(!pos||!pxPerMeter)return; steps++;
+  var ang=((heading||0)-rotOffset)*Math.PI/180, dpx=cfg.stepLen*pxPerMeter;
+  pos={x:pos.x+Math.sin(ang)*dpx, y:pos.y-Math.cos(ang)*dpx};
+  path.push({x:pos.x,y:pos.y}); updateReadouts(); requestDraw();
+}
+
+// ---------- recording ----------
+$("bRec").onclick=toggleRec;
+function toggleRec(){ tracking=!tracking;
+  $("bRec").textContent=tracking?"Aufzeichnung stoppen":"Aufzeichnung starten";
+  $("bRec").classList.toggle("live",tracking); $("bAnchor").disabled=!tracking;
+  setStatus(tracking?"Aufzeichnung läuft – Bildschirm anlassen.":"Pausiert.","on"); }
+$("bAnchor").onclick=function(){ placeMode="anchor"; flash("Deine echte Position auf dem Plan tippen"); };
+$("bReset").onclick=function(){ if(startPt){pos={x:startPt.x,y:startPt.y};path=[{x:startPt.x,y:startPt.y}];} steps=0; updateReadouts(); requestDraw(); };
+
+// ---------- guided wizard ----------
+function show(el,on){ $(el).style.display=on?"block":"none"; }
+function wizGo(s){ wiz=s; placeMode="none"; calState="idle"; renderWiz(); }
+function renderWiz(){
+  show("wizard", wiz!=="done"); show("actions", wiz==="done");
+  if(wiz==="done"){ return; }
+  var T=$("wzTitle"), X=$("wzText"), S=$("wzStep"), E=$("wzExtra"), P=$("wzPrimary"), B=$("wzSecondary");
+  E.innerHTML=""; B.style.display="none"; P.style.display="block"; P.disabled=false; P.className="btn primary";
+  if(wiz==="welcome"){ S.textContent=""; T.textContent="Wegtracker einrichten"; X.textContent="Ich führe dich in 5 kurzen Schritten durch die Einrichtung.";
+    P.textContent="Los geht’s"; P.onclick=function(){ wizGo("sensors"); };
+  } else if(wiz==="sensors"){ S.textContent="Schritt 1 von 5"; T.textContent="Sensoren freigeben"; X.textContent="Erlaube Bewegungs- und Kompassdaten. Safari fragt gleich nach – bitte „Erlauben“ tippen.";
+    P.textContent="Aktivieren"; P.onclick=async function(){ if(await startSensors()) wizGo("pdf"); };
+  } else if(wiz==="pdf"){ S.textContent="Schritt 2 von 5"; T.textContent="Grundriss laden"; X.textContent="Wähle dein Plan-PDF aus.";
+    P.textContent="PDF wählen"; P.onclick=function(){ $("fPdf").click(); };
+    B.style.display="block"; B.textContent="Zurück"; B.onclick=function(){ wizGo("sensors"); };
+  } else if(wiz==="scale"){ S.textContent="Schritt 3 von 5"; T.textContent="Maßstab – Punkte setzen"; X.textContent="Tippe zwei Punkte mit bekanntem Abstand auf dem Plan (z. B. eine Tür oder ein Vermaßungsmaß). Punkte lassen sich danach noch verschieben.";
+    placeMode="cal"; calPts=[]; fit(); P.style.display="none";
+    B.style.display="block"; B.textContent="Zurück"; B.onclick=function(){ wizGo("pdf"); };
+  } else if(wiz==="scaledist"){ S.textContent="Schritt 3 von 5"; T.textContent="Maßstab – Distanz"; X.textContent="Wie weit liegen die zwei Punkte in echt auseinander?";
+    E.innerHTML='<div class="inrow"><input type="number" id="wzDist" value="'+lastCalDist+'" min="0.1" step="0.1"><span>Meter</span></div>';
+    P.textContent="Maßstab setzen"; P.onclick=function(){ if(applyScale()){ flash("Maßstab gesetzt"); wizGo("start"); } };
+    B.style.display="block"; B.textContent="Punkte neu"; B.onclick=function(){ wizGo("scale"); };
+  } else if(wiz==="start"){ S.textContent="Schritt 4 von 5"; T.textContent="Startpunkt setzen"; X.textContent="Tippe deinen aktuellen Standort auf dem Plan. Zum Feinjustieren den Punkt danach einfach verschieben.";
+    placeMode="start"; P.style.display="none";
+    B.style.display="block"; B.textContent="Zurück"; B.onclick=function(){ wizGo("scaledist"); };
+  } else if(wiz==="calibwalk"){ S.textContent="Schritt 5 von 5"; T.textContent="Laufkalibrierung – gehen"; X.textContent="Gehe vom Startpunkt etwa 8 Schritte schnurgerade. Dann „Fertig“.";
+    E.innerHTML='<div class="big"><span id="wzSteps">0</span> Schritte</div>';
+    calState="walking"; calSteps=0; calHeadings=[]; calStartPx={x:(pos||startPt).x,y:(pos||startPt).y};
+    P.textContent="Fertig"; P.disabled=true; P.onclick=function(){ if(calSteps<3){flash("Weiter geradeaus");return;} wizGo("calibend"); };
+    B.style.display="block"; B.textContent="Überspringen"; B.onclick=function(){ flash("Kalibrierung übersprungen"); wizGo("done"); };
+  } else if(wiz==="calibend"){ S.textContent="Schritt 5 von 5"; T.textContent="Laufkalibrierung – Endpunkt"; X.textContent="Tippe jetzt deinen aktuellen (End-)Standort auf dem Plan.";
+    calState="awaitEnd"; P.style.display="none";
+    B.style.display="block"; B.textContent="Nochmal gehen"; B.onclick=function(){ wizGo("calibwalk"); };
   }
-  onStep();
-}
-function onStep(){
-  if(!pos||!pxPerMeter)return;
-  steps++;
-  const a=((heading||0)-rotOffset)*Math.PI/180;
-  const dpx=cfg.stepLen*pxPerMeter;
-  pos={x:pos.x+Math.sin(a)*dpx, y:pos.y-Math.cos(a)*dpx};
-  path.push({...pos}); updateReadouts(); requestDraw();
 }
 
-// ---------- tracking ----------
-$("bTrack").onclick=()=>{
-  tracking=!tracking;
-  $("bTrack").textContent=tracking?"Tracking stoppen":"Tracking starten";
-  $("bTrack").classList.toggle("live",tracking);
-  $("bAnchor").disabled=!tracking;
-  if(tracking){ $("setup").open=false; setStatus("Tracking läuft … Bildschirm anlassen.","on"); }
-  else setStatus("Tracking pausiert.","on");
-};
-function maybeEnableTrack(){
-  // sensors are "active" once the activate button has been disabled
-  const sensorsOn=$("bSensors").disabled;
-  if(mapImg&&pxPerMeter&&startPt&&sensorsOn){ enable($("bTrack")); }
-  $("bCalib").disabled = !(pxPerMeter&&startPt&&sensorsOn);
-}
+// ---------- settings ----------
+function openSettings(on){ show("scrim",on); show("settings",on); }
+$("gear").onclick=function(){ openSettings(true); };
+$("sClose").onclick=function(){ openSettings(false); }; $("scrim").onclick=function(){ openSettings(false); };
+$("stepLen").onchange=function(e){ cfg.stepLen=parseFloat(e.target.value)||0.7; };
+$("sens").oninput=function(e){ cfg.sens=parseFloat(e.target.value); };
+$("rot").oninput=function(e){ rotOffset=parseInt(e.target.value); $("rotVal").textContent=rotOffset+"°"; requestDraw(); };
+$("bRecalib").onclick=function(){ if(!startPt||!pxPerMeter){flash("Erst Einrichtung abschließen");return;} openSettings(false); wizGo("calibwalk"); };
+$("bRestart").onclick=function(){ openSettings(false); calPts=[]; pxPerMeter=null; startPt=null; pos=null; path=[]; steps=0; if(tracking)toggleRec(); updateReadouts(); wizGo("welcome"); };
 
-// ---------- ui helpers ----------
-function enable(b){b.disabled=false;}
-function updateReadouts(){
-  $("rSteps").textContent=steps;
-  $("rDist").textContent=(steps*cfg.stepLen).toFixed(1).replace(".",",")+" m";
-}
-function setStatus(t,cls){ $("statusText").textContent=t;
-  $("dot").className=cls==="err"?"err":cls==="on"?"on":""; }
-let hintT;
-function flash(t){ const h=$("hint"); h.textContent=t; h.classList.add("show");
-  clearTimeout(hintT); hintT=setTimeout(()=>h.classList.remove("show"),2600); }
+// ---------- helpers ----------
+function updateReadouts(){ $("rSteps").textContent=steps; $("rDist").textContent=(steps*cfg.stepLen).toFixed(1).replace(".",",")+" m"; }
+function setStatus(t,cls){ $("statusText").textContent=t; $("dot").className=cls==="err"?"err":cls==="warn"?"warn":cls==="on"?"on":""; }
+var hintT; function flash(t){ var h=$("hint"); h.textContent=t; h.classList.add("show"); clearTimeout(hintT); hintT=setTimeout(function(){h.classList.remove("show");},2600); }
 
-syncSize();
+renderWiz(); syncSize();
 </script>
 </body>
 </html>
