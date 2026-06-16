@@ -7,71 +7,67 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <style>
   :root{
-    --navy:#222b38; --navy-2:#2c3744; --ink:#1d2733; --muted:#6b7785;
+    --navy:#222b38; --ink:#1d2733; --muted:#6b7785;
     --cyan:#29abe2; --cyan-d:#1f8cbb;
     --grey:#bcc3c9; --bg:#eef1f4; --card:#ffffff; --line:#d9dee3; --stage:#1b232e;
     --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
     --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
   }
   *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
-  html,body{margin:0;height:100%;background:var(--bg);color:var(--ink);
-    font-family:var(--sans);overscroll-behavior:none}
+  html,body{margin:0;height:100%;background:var(--bg);color:var(--ink);font-family:var(--sans);overscroll-behavior:none}
   #app{display:flex;flex-direction:column;height:100dvh;position:relative}
 
   header{display:flex;align-items:stretch;gap:1px;background:var(--line);
     padding-top:env(safe-area-inset-top);border-bottom:1px solid var(--line)}
-  .stat{flex:1;background:var(--card);padding:9px 4px;text-align:center;min-width:0}
-  .stat .lbl{font-size:10px;letter-spacing:.13em;text-transform:uppercase;color:var(--muted)}
-  .stat .val{font-family:var(--mono);font-size:18px;font-weight:700;margin-top:2px;color:var(--navy);
+  .stat{flex:1;background:var(--card);padding:6px 4px;text-align:center;min-width:0}
+  .stat .lbl{font-size:8px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted)}
+  .stat .val{font-family:var(--mono);font-size:14px;font-weight:700;margin-top:1px;color:var(--navy);
     white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .stat .val.cyan{color:var(--cyan-d)}
-  #gear{flex:none;width:46px;background:var(--card);border:none;color:var(--muted);font-size:20px}
+  #gear{flex:none;width:36px;background:var(--card);border:none;color:var(--grey);font-size:15px}
 
-  #status{font-size:11px;color:var(--muted);padding:6px 12px;background:var(--card);
+  #status{font-size:11px;color:var(--muted);padding:5px 12px;background:var(--card);
     display:flex;align-items:center;gap:7px;border-bottom:1px solid var(--line)}
-  #dot{width:8px;height:8px;border-radius:50%;background:var(--grey);flex:none}
+  #dot{width:7px;height:7px;border-radius:50%;background:var(--grey);flex:none}
   #dot.on{background:var(--cyan)} #dot.err{background:#e5564b} #dot.warn{background:#e0a426}
 
   #stage{position:relative;flex:1;overflow:hidden;background:var(--stage);touch-action:none}
   #cv{position:absolute;inset:0;width:100%;height:100%;display:block;touch-action:none}
   #hint{position:absolute;left:50%;top:14px;transform:translateX(-50%);z-index:4;
-    background:rgba(41,171,226,.14);border:1px solid var(--cyan);color:#bfe6f7;
+    background:rgba(41,171,226,.16);border:1px solid var(--cyan);color:#cfeefb;
     padding:7px 14px;border-radius:20px;font-size:13px;font-weight:600;
     pointer-events:none;opacity:0;transition:opacity .2s;text-align:center;max-width:86%}
   #hint.show{opacity:1}
   #zoom{position:absolute;right:10px;top:10px;display:flex;flex-direction:column;gap:6px;z-index:4}
-  #zoom button{width:42px;height:42px;border-radius:11px;border:none;
-    background:rgba(255,255,255,.92);color:var(--navy);font-size:21px;font-family:var(--mono);
+  #zoom button{width:40px;height:40px;border-radius:11px;border:none;
+    background:rgba(255,255,255,.92);color:var(--navy);font-size:19px;font-family:var(--mono);
     box-shadow:0 1px 4px rgba(0,0,0,.25)}
+  #zoom button.act{background:var(--cyan);color:#fff}
 
-  .sheet{background:var(--card);border-top:1px solid var(--line);
-    border-radius:18px 18px 0 0;box-shadow:0 -6px 24px rgba(20,30,45,.12);
-    padding:16px 16px calc(14px + env(safe-area-inset-bottom));z-index:6}
+  .sheet{background:var(--card);border-top:1px solid var(--line);border-radius:18px 18px 0 0;
+    box-shadow:0 -6px 24px rgba(20,30,45,.12);padding:14px 16px calc(12px + env(safe-area-inset-bottom));z-index:6}
   .wzstep{font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--cyan-d);font-weight:700}
-  .wztitle{font-size:19px;font-weight:700;color:var(--navy);margin:3px 0 5px}
+  .wztitle{font-size:18px;font-weight:700;color:var(--navy);margin:3px 0 5px}
   .wztext{font-size:14px;line-height:1.5;color:var(--muted)}
   #wzExtra{margin-top:12px}
-  .wzbtns{display:flex;gap:10px;margin-top:16px}
+  .wzbtns{display:flex;gap:10px;margin-top:14px}
   .btn{flex:1;border:1.5px solid var(--line);background:var(--card);color:var(--navy);
-    border-radius:13px;padding:14px 10px;font-size:15px;font-weight:700;font-family:var(--sans)}
+    border-radius:12px;padding:11px 8px;font-size:14px;font-weight:700;font-family:var(--sans)}
   .btn:disabled{opacity:.4}
   .btn.primary{background:var(--cyan);color:#fff;border-color:var(--cyan)}
   .btn.live{background:#e5564b;color:#fff;border-color:#e5564b}
   .btn.ghost{background:transparent;color:var(--muted);border-color:transparent}
-  .big{font-family:var(--mono);font-size:30px;font-weight:700;color:var(--navy);text-align:center;margin:4px 0}
+  .btn.icon{flex:none;width:50px;font-size:18px;padding:11px 0}
+  .big{font-family:var(--mono);font-size:28px;font-weight:700;color:var(--navy);text-align:center;margin:2px 0}
   input[type=number]{width:100%;background:var(--bg);border:1.5px solid var(--line);color:var(--ink);
-    border-radius:11px;padding:13px;font-family:var(--mono);font-size:17px;text-align:center}
-  .inrow{display:flex;align-items:center;gap:10px}
-  .inrow span{font-size:15px;color:var(--muted)}
+    border-radius:11px;padding:12px;font-family:var(--mono);font-size:17px;text-align:center}
+  .inrow{display:flex;align-items:center;gap:10px}.inrow span{font-size:15px;color:var(--muted)}
 
-  #actions{display:none}
-  #actions .row{display:flex;gap:8px;margin-bottom:8px}#actions .row:last-child{margin-bottom:0}
+  #actions{display:none}#actions .row{display:flex;gap:8px}
 
-  /* settings overlay */
   #scrim{position:absolute;inset:0;background:rgba(20,30,45,.45);z-index:7;display:none}
   #settings{position:absolute;left:0;right:0;bottom:0;z-index:8;display:none;max-height:80dvh;overflow-y:auto}
-  #settings .field{display:flex;align-items:center;justify-content:space-between;gap:12px;
-    padding:12px 0;border-top:1px solid var(--line)}
+  #settings .field{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 0;border-top:1px solid var(--line)}
   #settings .field:first-of-type{border-top:none}
   #settings label{font-size:14px;color:var(--ink)}
   #settings input[type=number]{width:90px}
@@ -79,8 +75,7 @@
   .shead{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px}
   .shead b{font-size:17px;color:var(--navy)}
   .xclose{border:none;background:var(--bg);border-radius:9px;padding:8px 12px;font-weight:700;color:var(--navy)}
-  .mini{padding:11px;border:1.5px solid var(--line);border-radius:11px;background:var(--card);
-    color:var(--navy);font-weight:700;width:100%;font-size:14px;margin-top:8px}
+  .mini{padding:11px;border:1.5px solid var(--line);border-radius:11px;background:var(--card);color:var(--navy);font-weight:700;width:100%;font-size:14px;margin-top:8px}
   input[type=file]{display:none}
 </style>
 </head>
@@ -99,11 +94,12 @@
     <div id="hint"></div>
     <div id="zoom">
       <button id="zin">+</button><button id="zout">−</button>
-      <button id="zfit" style="font-size:13px">FIT</button><button id="zrot" style="font-size:17px">⟳</button>
+      <button id="zfit" style="font-size:12px">FIT</button>
+      <button id="zfollow" title="Karte mitdrehen">➤</button>
+      <button id="zrot" style="font-size:16px" title="Plan 90° drehen">⟳</button>
     </div>
   </div>
 
-  <!-- guided setup -->
   <div id="wizard" class="sheet">
     <div class="wzstep" id="wzStep"></div>
     <div class="wztitle" id="wzTitle"></div>
@@ -115,18 +111,16 @@
     </div>
   </div>
 
-  <!-- tracking controls -->
   <div id="actions" class="sheet">
     <div class="row">
-      <button class="btn primary" id="bRec">Aufzeichnung starten</button>
-      <button class="btn" id="bAnchor" disabled>Position korrigieren</button>
+      <button class="btn primary" id="bRec">Starten</button>
+      <button class="btn" id="bAnchor" disabled>Korrektur</button>
+      <button class="btn icon" id="bReset" title="Weg löschen">🗑</button>
     </div>
-    <div class="row"><button class="btn ghost" id="bReset">Weg löschen</button></div>
   </div>
 
   <input type="file" id="fPdf" accept="application/pdf">
 
-  <!-- settings -->
   <div id="scrim"></div>
   <div id="settings" class="sheet">
     <div class="shead"><b>Einstellungen</b><button class="xclose" id="sClose">Fertig</button></div>
@@ -147,26 +141,22 @@ var $=function(id){return document.getElementById(id);};
 var dpr=Math.min(window.devicePixelRatio||1,2.5);
 var cv=$("cv"), ctx=cv.getContext("2d");
 
-// ---------- state ----------
 var mapImg=null, imgW=0, imgH=0;
-var view={scale:1,tx:0,ty:0}, didFit=false;
+var view={scale:1,tx:0,ty:0}, didFit=false, viewRot=0, rotWithMe=false;
+var M={a:1,b:0,c:0,d:1,e:0,f:0};
 var pxPerMeter=null, lastCalDist=5;
 var path=[], startPt=null, pos=null, calPts=[];
-var placeMode="none";              // none|cal|start|anchor
-var calState="idle";               // idle|walking|awaitEnd
+var placeMode="none", calState="idle";
 var calSteps=0, calHeadings=[], calStartPx=null;
 var tracking=false, heading=null, rotOffset=0, steps=0;
 var cfg={stepLen:0.70, sens:1.1};
 var wiz="welcome";
-// touch
 var ptrs=new Map(), gesture=null, pinch=null, multi=false, dragM=null;
 var touchHold=false, holdTimer=null;
 
-// ---------- draw scheduler ----------
 var dirty=true; function requestDraw(){dirty=true;}
 (function frame(){ if(dirty){dirty=false; draw();} requestAnimationFrame(frame); })();
 
-// ---------- sizing ----------
 function syncSize(){
   var r=$("stage").getBoundingClientRect();
   var w=Math.max(1,Math.round(r.width*dpr)), h=Math.max(1,Math.round(r.height*dpr));
@@ -177,45 +167,49 @@ if(window.ResizeObserver){ new ResizeObserver(syncSize).observe($("stage")); }
 window.addEventListener("resize",syncSize);
 window.addEventListener("orientationchange",function(){setTimeout(syncSize,300);});
 
-// ---------- PDF ----------
 $("fPdf").onchange=async function(e){
-  var f=e.target.files[0]; if(!f) return;
-  setStatus("PDF wird geladen …");
+  var f=e.target.files[0]; if(!f) return; setStatus("PDF wird geladen …");
   try{
     pdfjsLib.GlobalWorkerOptions.workerSrc="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
-    var buf=await f.arrayBuffer();
-    var pdf=await pdfjsLib.getDocument({data:buf}).promise;
-    var page=await pdf.getPage(1);
-    var base=page.getViewport({scale:1});
-    var rs=Math.min(2200,Math.max(1400,base.width))/base.width;
-    var vp=page.getViewport({scale:rs});
-    var off=document.createElement("canvas");
-    off.width=Math.round(vp.width); off.height=Math.round(vp.height);
+    var buf=await f.arrayBuffer(); var pdf=await pdfjsLib.getDocument({data:buf}).promise; var page=await pdf.getPage(1);
+    var base=page.getViewport({scale:1}); var rs=Math.min(2200,Math.max(1400,base.width))/base.width; var vp=page.getViewport({scale:rs});
+    var off=document.createElement("canvas"); off.width=Math.round(vp.width); off.height=Math.round(vp.height);
     await page.render({canvasContext:off.getContext("2d"),viewport:vp}).promise;
-    mapImg=off; imgW=off.width; imgH=off.height; fit(); didFit=true;
-    setStatus("Grundriss geladen.","on");
+    mapImg=off; imgW=off.width; imgH=off.height; fit(); didFit=true; setStatus("Grundriss geladen.","on");
     if(wiz==="pdf") wizGo("scale");
   }catch(err){ setStatus("PDF konnte nicht geladen werden: "+err.message,"err"); }
 };
 
-// ---------- view ----------
+// ---------- transform (scale + translate + optional view rotation about center) ----------
 function fit(){ if(!mapImg)return;
   view.scale=Math.min(cv.width/imgW, cv.height/imgH)*0.95;
   view.tx=(cv.width-imgW*view.scale)/2; view.ty=(cv.height-imgH*view.scale)/2; requestDraw(); }
-function img2scr(p){ return {x:p.x*view.scale+view.tx, y:p.y*view.scale+view.ty}; }
-function scr2img(cx,cy){ var r=cv.getBoundingClientRect();
-  return {x:((cx-r.left)*dpr-view.tx)/view.scale, y:((cy-r.top)*dpr-view.ty)/view.scale}; }
+function computeM(){
+  var Cx=cv.width/2, Cy=cv.height/2;
+  if(rotWithMe && pos && heading!=null){ viewRot=-((heading-rotOffset)*Math.PI/180);
+    view.tx=Cx-pos.x*view.scale; view.ty=Cy-pos.y*view.scale; } else viewRot=0;
+  var co=Math.cos(viewRot), si=Math.sin(viewRot), s=view.scale, tx=view.tx, ty=view.ty;
+  M.a=co*s; M.b=si*s; M.c=-si*s; M.d=co*s;
+  M.e=Cx+co*(tx-Cx)-si*(ty-Cy); M.f=Cy+si*(tx-Cx)+co*(ty-Cy);
+}
+function img2scr(p){ return {x:M.a*p.x+M.c*p.y+M.e, y:M.b*p.x+M.d*p.y+M.f}; }
+function scr2img(cx,cy){ computeM(); var r=cv.getBoundingClientRect(); var X=(cx-r.left)*dpr, Y=(cy-r.top)*dpr;
+  var det=M.a*M.d-M.b*M.c||1, dx=X-M.e, dy=Y-M.f;
+  return {x:(M.d*dx-M.c*dy)/det, y:(-M.b*dx+M.a*dy)/det}; }
 $("zin").onclick=function(){zoomAt(1.3);}; $("zout").onclick=function(){zoomAt(1/1.3);};
 $("zfit").onclick=fit; $("zrot").onclick=rotateImg;
+$("zfollow").onclick=function(){ rotWithMe=!rotWithMe; $("zfollow").classList.toggle("act",rotWithMe);
+  flash(rotWithMe?"Karte dreht mit dir":"Karte fest"); requestDraw(); };
 function zoomAt(f){ var cx=cv.width/2, cy=cv.height/2;
   view.tx=cx-(cx-view.tx)*f; view.ty=cy-(cy-view.ty)*f; view.scale*=f; requestDraw(); }
 function rotateImg(){ if(!mapImg)return;
-  var r=document.createElement("canvas"); r.width=imgH; r.height=imgW;
+  var oldH=imgH; var r=document.createElement("canvas"); r.width=imgH; r.height=imgW;
   var c=r.getContext("2d"); c.translate(r.width/2,r.height/2); c.rotate(Math.PI/2); c.drawImage(mapImg,-imgW/2,-imgH/2);
   mapImg=r; imgW=r.width; imgH=r.height;
-  calPts=[]; pxPerMeter=null; startPt=null; pos=null; path=[]; steps=0;
-  if(tracking) toggleRec();
-  updateReadouts(); fit(); flash("Plan gedreht – Einrichtung neu starten"); wizGo("scale");
+  var T=function(p){ return p?{x:oldH-p.y, y:p.x}:p; };
+  calPts=calPts.map(T); path=path.map(T); if(startPt)startPt=T(startPt); if(pos)pos=T(pos); if(calStartPx)calStartPx=T(calStartPx);
+  rotOffset=((rotOffset-90)%360+360)%360; $("rot").value=rotOffset; $("rotVal").textContent=rotOffset+"°";
+  fit(); flash("Plan gedreht"); requestDraw();
 }
 
 // ---------- drawing ----------
@@ -228,73 +222,65 @@ function pin(s,color,label){
     ctx.textAlign="center";ctx.textBaseline="middle";ctx.fillText(label,s.x,s.y); }
 }
 function draw(){
-  ctx.clearRect(0,0,cv.width,cv.height);
+  computeM(); ctx.setTransform(1,0,0,1,0,0); ctx.clearRect(0,0,cv.width,cv.height);
   if(mapImg){ ctx.imageSmoothingQuality="high";
-    ctx.drawImage(mapImg,view.tx,view.ty,imgW*view.scale,imgH*view.scale); }
+    ctx.setTransform(M.a,M.b,M.c,M.d,M.e,M.f); ctx.drawImage(mapImg,0,0); ctx.setTransform(1,0,0,1,0,0); }
   if(calPts.length){
     if(calPts.length===2){ var a=img2scr(calPts[0]),b=img2scr(calPts[1]);
       ctx.strokeStyle="#222b38";ctx.lineWidth=2.5*dpr;ctx.setLineDash([6*dpr,5*dpr]);
       ctx.beginPath();ctx.moveTo(a.x,a.y);ctx.lineTo(b.x,b.y);ctx.stroke();ctx.setLineDash([]); }
     calPts.forEach(function(p,i){ pin(img2scr(p),"#222b38",String(i+1)); });
   }
-  if(path.length>1){
-    ctx.lineJoin="round";ctx.lineCap="round";
+  if(path.length>1){ ctx.lineJoin="round";ctx.lineCap="round";
     ctx.strokeStyle="rgba(20,30,45,.55)";ctx.lineWidth=5.5*dpr; strokePath();
-    ctx.strokeStyle="#29abe2";ctx.lineWidth=3*dpr; strokePath();
-  }
+    ctx.strokeStyle="#29abe2";ctx.lineWidth=3*dpr; strokePath(); }
   if(startPt) pin(img2scr(startPt),"#222b38","S");
-  if(pos){
-    var s=img2scr(pos);
-    if(heading!=null){ var ang=(heading-rotOffset)*Math.PI/180, L=30*dpr;
+  if(pos){ var s=img2scr(pos);
+    if(heading!=null){ var ang=(heading-rotOffset)*Math.PI/180 + viewRot, L=30*dpr;
       ctx.strokeStyle="#222b38";ctx.lineWidth=3.5*dpr;ctx.lineCap="round";
       ctx.beginPath();ctx.moveTo(s.x,s.y);ctx.lineTo(s.x+Math.sin(ang)*L,s.y-Math.cos(ang)*L);ctx.stroke(); }
-    pin(s,"#29abe2",null);
-  }
+    pin(s,"#29abe2",null); }
 }
 function strokePath(){ ctx.beginPath();
-  path.forEach(function(p,i){ var s=img2scr(p); if(i)ctx.lineTo(s.x,s.y); else ctx.moveTo(s.x,s.y); });
-  ctx.stroke(); }
+  path.forEach(function(p,i){ var s=img2scr(p); if(i)ctx.lineTo(s.x,s.y); else ctx.moveTo(s.x,s.y); }); ctx.stroke(); }
 
-// ---------- touch: 1 finger = pan/tap/drag-marker, 2 = pinch; IMU pauses while touching ----------
+// ---------- touch ----------
 function pauseIMU(){ touchHold=true; if(holdTimer){clearTimeout(holdTimer);holdTimer=null;} }
 function resumeIMUSoon(){ if(holdTimer)clearTimeout(holdTimer); holdTimer=setTimeout(function(){touchHold=false;},500); }
 function pd(a,b){return Math.hypot(a.x-b.x,a.y-b.y);}
 function pm(a,b){return {x:(a.x+b.x)/2,y:(a.y+b.y)/2};}
 function hitMarker(cx,cy){
-  if(placeMode!=="none"||calState!=="idle") return null;
-  var r=cv.getBoundingClientRect(), bx=(cx-r.left)*dpr, by=(cy-r.top)*dpr, R=26*dpr, s;
+  if(placeMode!=="none"||calState!=="idle"||rotWithMe) return null;
+  computeM(); var r=cv.getBoundingClientRect(), bx=(cx-r.left)*dpr, by=(cy-r.top)*dpr, R=26*dpr, s;
   if(startPt){ s=img2scr(startPt); if(Math.hypot(s.x-bx,s.y-by)<R) return {t:"start"}; }
   for(var i=calPts.length-1;i>=0;i--){ s=img2scr(calPts[i]); if(Math.hypot(s.x-bx,s.y-by)<R) return {t:"cal",i:i}; }
   return null;
 }
-function startPinch(){ var a=[].concat(Array.from(ptrs.values())); if(a.length<2)return;
-  var m=pm(a[0],a[1]); pinch={d:pd(a[0],a[1]),imgX:(m.x*dpr-view.tx)/view.scale,imgY:(m.y*dpr-view.ty)/view.scale,scale:view.scale}; }
+function startPinch(){ var a=Array.from(ptrs.values()); if(a.length<2)return; var m=pm(a[0],a[1]); var img=scr2img(m.x,m.y);
+  pinch={d:pd(a[0],a[1]),imgX:img.x,imgY:img.y,scale:view.scale}; }
 function updatePinch(){ var a=Array.from(ptrs.values()); if(a.length<2||!pinch)return;
-  var d=pd(a[0],a[1]), m=pm(a[0],a[1]); var ns=Math.max(0.02,Math.min(40,pinch.scale*(d/pinch.d)));
-  view.scale=ns; view.tx=m.x*dpr-pinch.imgX*ns; view.ty=m.y*dpr-pinch.imgY*ns; requestDraw(); }
+  var d=pd(a[0],a[1]); var ns=Math.max(0.02,Math.min(40,pinch.scale*(d/pinch.d))); view.scale=ns;
+  if(!rotWithMe){ var m=pm(a[0],a[1]); var r=cv.getBoundingClientRect();
+    view.tx=(m.x-r.left)*dpr-pinch.imgX*ns; view.ty=(m.y-r.top)*dpr-pinch.imgY*ns; }
+  requestDraw(); }
 cv.addEventListener("pointerdown",function(e){
   cv.setPointerCapture(e.pointerId); ptrs.set(e.pointerId,{x:e.clientX,y:e.clientY}); pauseIMU();
   if(ptrs.size===1){ multi=false; var h=hitMarker(e.clientX,e.clientY);
-    if(h){ dragM=h; gesture=null; }
-    else { dragM=null; gesture={x:e.clientX,y:e.clientY,t:Date.now(),tx:view.tx,ty:view.ty,moved:false}; }
-  } else if(ptrs.size===2){ multi=true; gesture=null; dragM=null; startPinch(); }
+    if(h){ dragM=h; gesture=null; } else { dragM=null; gesture={x:e.clientX,y:e.clientY,t:Date.now(),tx:view.tx,ty:view.ty,moved:false}; } }
+  else if(ptrs.size===2){ multi=true; gesture=null; dragM=null; startPinch(); }
 });
 cv.addEventListener("pointermove",function(e){
   if(!ptrs.has(e.pointerId))return; ptrs.set(e.pointerId,{x:e.clientX,y:e.clientY});
   if(ptrs.size>=2){ updatePinch(); return; }
   if(dragM){ var p=scr2img(e.clientX,e.clientY);
     if(dragM.t==="start"){ startPt={x:p.x,y:p.y}; if(!tracking){ pos={x:p.x,y:p.y}; if(path.length) path[0]={x:p.x,y:p.y}; else path=[{x:p.x,y:p.y}]; } }
-    else { calPts[dragM.i]={x:p.x,y:p.y}; }
-    requestDraw(); return;
-  }
-  if(gesture){ var dx=e.clientX-gesture.x, dy=e.clientY-gesture.y;
-    if(Math.hypot(dx,dy)>6) gesture.moved=true;
-    view.tx=gesture.tx+dx*dpr; view.ty=gesture.ty+dy*dpr; requestDraw(); }
+    else { calPts[dragM.i]={x:p.x,y:p.y}; } requestDraw(); return; }
+  if(gesture){ var dx=e.clientX-gesture.x, dy=e.clientY-gesture.y; if(Math.hypot(dx,dy)>6) gesture.moved=true;
+    if(!rotWithMe){ view.tx=gesture.tx+dx*dpr; view.ty=gesture.ty+dy*dpr; requestDraw(); } }
 });
 function endPtr(e){
   if(!ptrs.has(e.pointerId))return; ptrs.delete(e.pointerId);
-  if(ptrs.size===1){ var p=Array.from(ptrs.values())[0];
-    gesture={x:p.x,y:p.y,t:Date.now(),tx:view.tx,ty:view.ty,moved:true}; pinch=null; dragM=null; }
+  if(ptrs.size===1){ var p=Array.from(ptrs.values())[0]; gesture={x:p.x,y:p.y,t:Date.now(),tx:view.tx,ty:view.ty,moved:true}; pinch=null; dragM=null; }
   else if(ptrs.size===0){
     if(dragM){ commitDrag(); dragM=null; }
     else if(!multi && gesture && !gesture.moved && Date.now()-gesture.t<450 && mapImg){ handleTap(scr2img(e.clientX,e.clientY)); }
@@ -304,27 +290,20 @@ function endPtr(e){
 cv.addEventListener("pointerup",endPtr); cv.addEventListener("pointercancel",endPtr);
 function commitDrag(){
   if(dragM.t==="cal" && pxPerMeter!=null && calPts.length===2 && lastCalDist>0){
-    var dpx=Math.hypot(calPts[0].x-calPts[1].x,calPts[0].y-calPts[1].y); pxPerMeter=dpx/lastCalDist;
-  }
+    var dpx=Math.hypot(calPts[0].x-calPts[1].x,calPts[0].y-calPts[1].y); pxPerMeter=dpx/lastCalDist; }
   flash("Position angepasst");
 }
-
 function handleTap(p){
   if(calState==="awaitEnd"){ finishCalib(p); return; }
-  if(placeMode==="cal"){
-    calPts.push(p);
-    if(calPts.length>=2){ calPts=calPts.slice(-2); placeMode="none"; if(wiz==="scale") wizGo("scaledist"); }
-    else flash("Punkt 2 tippen");
+  if(placeMode==="cal"){ calPts.push(p);
+    if(calPts.length>=2){ calPts=calPts.slice(-2); placeMode="none"; if(wiz==="scale") wizGo("scaledist"); } else flash("Punkt 2 tippen");
     requestDraw();
-  } else if(placeMode==="start"){
-    startPt={x:p.x,y:p.y}; pos={x:p.x,y:p.y}; path=[{x:p.x,y:p.y}]; placeMode="none";
+  } else if(placeMode==="start"){ startPt={x:p.x,y:p.y}; pos={x:p.x,y:p.y}; path=[{x:p.x,y:p.y}]; placeMode="none";
     if(wiz==="start") wizGo("calibwalk"); requestDraw();
-  } else if(placeMode==="anchor"){
-    pos={x:p.x,y:p.y}; path.push({x:p.x,y:p.y}); placeMode="none"; flash("Position korrigiert"); requestDraw();
-  }
+  } else if(placeMode==="anchor"){ pos={x:p.x,y:p.y}; path.push({x:p.x,y:p.y}); placeMode="none"; flash("Position korrigiert"); requestDraw(); }
 }
 
-// ---------- scale + calibration math ----------
+// ---------- scale + calibration ----------
 function applyScale(){
   if(calPts.length<2){ flash("Erst zwei Punkte tippen"); return false; }
   var dpx=Math.hypot(calPts[0].x-calPts[1].x,calPts[0].y-calPts[1].y), m=parseFloat($("wzDist").value);
@@ -336,10 +315,9 @@ function finishCalib(end){
   if(realDist<0.3||calSteps<3){ flash("Kalibrierung ungültig – erneut versuchen"); wizGo("calibwalk"); return; }
   var sl=Math.max(0.3,Math.min(1.2,realDist/calSteps)); cfg.stepLen=sl; $("stepLen").value=sl.toFixed(2);
   var planAngle=(Math.atan2(dx,-dy)*180/Math.PI+360)%360;
-  if(calHeadings.length){ var sx=0,sy=0;
-    calHeadings.forEach(function(h){ sx+=Math.cos(h*Math.PI/180); sy+=Math.sin(h*Math.PI/180); });
-    var avg=(Math.atan2(sy,sx)*180/Math.PI+360)%360;
-    rotOffset=Math.round(((avg-planAngle)%360+360)%360); $("rot").value=rotOffset; $("rotVal").textContent=rotOffset+"°"; }
+  if(calHeadings.length){ var sx=0,sy=0; calHeadings.forEach(function(h){ sx+=Math.cos(h*Math.PI/180); sy+=Math.sin(h*Math.PI/180); });
+    var avg=(Math.atan2(sy,sx)*180/Math.PI+360)%360; rotOffset=Math.round(((avg-planAngle)%360+360)%360);
+    $("rot").value=rotOffset; $("rotVal").textContent=rotOffset+"°"; }
   pos={x:end.x,y:end.y}; path=[{x:calStartPx.x,y:calStartPx.y},{x:end.x,y:end.y}]; steps=0;
   setStatus("Kalibriert: "+sl.toFixed(2).replace(".",",")+" m/Schritt, Kurs-Offset "+rotOffset+"°.","on");
   updateReadouts(); wizGo("done");
@@ -351,13 +329,12 @@ async function startSensors(){
   try{
     if(window.DeviceMotionEvent&&DeviceMotionEvent.requestPermission){ var r=await DeviceMotionEvent.requestPermission(); if(r!=="granted"){ flash("Bewegungszugriff abgelehnt"); return false; } }
     if(window.DeviceOrientationEvent&&DeviceOrientationEvent.requestPermission){ try{await DeviceOrientationEvent.requestPermission();}catch(_){ } }
-    window.addEventListener("devicemotion",onMotion,true);
-    window.addEventListener("deviceorientation",onOrient,true);
+    window.addEventListener("devicemotion",onMotion,true); window.addEventListener("deviceorientation",onOrient,true);
     setStatus("Sensoren aktiv.","on"); return true;
   }catch(err){ setStatus("Sensorfehler: "+err.message,"err"); return false; }
 }
 function onOrient(e){ var h=(typeof e.webkitCompassHeading==="number")?e.webkitCompassHeading:(e.alpha!=null?360-e.alpha:null);
-  if(h!=null){ heading=h; $("rHead").textContent=Math.round(h)+"°"; if(tracking)requestDraw(); } }
+  if(h!=null){ heading=h; $("rHead").textContent=Math.round(h)+"°"; if(tracking||rotWithMe)requestDraw(); } }
 var g=9.81, lastStep=0;
 function onMotion(e){ var a=e.accelerationIncludingGravity||e.acceleration; if(!a)return;
   var m=Math.hypot(a.x||0,a.y||0,a.z||0); g=g*0.92+m*0.08; var d=m-g; var now=e.timeStamp||Date.now();
@@ -375,45 +352,39 @@ function onStepDetected(){
 // ---------- recording ----------
 $("bRec").onclick=toggleRec;
 function toggleRec(){ tracking=!tracking;
-  $("bRec").textContent=tracking?"Aufzeichnung stoppen":"Aufzeichnung starten";
-  $("bRec").classList.toggle("live",tracking); $("bAnchor").disabled=!tracking;
+  $("bRec").textContent=tracking?"Stoppen":"Starten"; $("bRec").classList.toggle("live",tracking); $("bAnchor").disabled=!tracking;
   setStatus(tracking?"Aufzeichnung läuft – Bildschirm anlassen.":"Pausiert.","on"); }
 $("bAnchor").onclick=function(){ placeMode="anchor"; flash("Deine echte Position auf dem Plan tippen"); };
 $("bReset").onclick=function(){ if(startPt){pos={x:startPt.x,y:startPt.y};path=[{x:startPt.x,y:startPt.y}];} steps=0; updateReadouts(); requestDraw(); };
 
-// ---------- guided wizard ----------
+// ---------- wizard ----------
 function show(el,on){ $(el).style.display=on?"block":"none"; }
 function wizGo(s){ wiz=s; placeMode="none"; calState="idle"; renderWiz(); }
 function renderWiz(){
-  show("wizard", wiz!=="done"); show("actions", wiz==="done");
-  if(wiz==="done"){ return; }
-  var T=$("wzTitle"), X=$("wzText"), S=$("wzStep"), E=$("wzExtra"), P=$("wzPrimary"), B=$("wzSecondary");
+  show("wizard", wiz!=="done"); show("actions", wiz==="done"); if(wiz==="done") return;
+  var T=$("wzTitle"),X=$("wzText"),S=$("wzStep"),E=$("wzExtra"),P=$("wzPrimary"),B=$("wzSecondary");
   E.innerHTML=""; B.style.display="none"; P.style.display="block"; P.disabled=false; P.className="btn primary";
   if(wiz==="welcome"){ S.textContent=""; T.textContent="Wegtracker einrichten"; X.textContent="Ich führe dich in 5 kurzen Schritten durch die Einrichtung.";
     P.textContent="Los geht’s"; P.onclick=function(){ wizGo("sensors"); };
-  } else if(wiz==="sensors"){ S.textContent="Schritt 1 von 5"; T.textContent="Sensoren freigeben"; X.textContent="Erlaube Bewegungs- und Kompassdaten. Safari fragt gleich nach – bitte „Erlauben“ tippen.";
+  } else if(wiz==="sensors"){ S.textContent="Schritt 1 von 5"; T.textContent="Sensoren freigeben"; X.textContent="Erlaube Bewegungs- und Kompassdaten. Safari fragt gleich – bitte „Erlauben“.";
     P.textContent="Aktivieren"; P.onclick=async function(){ if(await startSensors()) wizGo("pdf"); };
   } else if(wiz==="pdf"){ S.textContent="Schritt 2 von 5"; T.textContent="Grundriss laden"; X.textContent="Wähle dein Plan-PDF aus.";
-    P.textContent="PDF wählen"; P.onclick=function(){ $("fPdf").click(); };
-    B.style.display="block"; B.textContent="Zurück"; B.onclick=function(){ wizGo("sensors"); };
-  } else if(wiz==="scale"){ S.textContent="Schritt 3 von 5"; T.textContent="Maßstab – Punkte setzen"; X.textContent="Tippe zwei Punkte mit bekanntem Abstand auf dem Plan (z. B. eine Tür oder ein Vermaßungsmaß). Punkte lassen sich danach noch verschieben.";
-    placeMode="cal"; calPts=[]; fit(); P.style.display="none";
-    B.style.display="block"; B.textContent="Zurück"; B.onclick=function(){ wizGo("pdf"); };
+    P.textContent="PDF wählen"; P.onclick=function(){ $("fPdf").click(); }; B.style.display="block"; B.textContent="Zurück"; B.onclick=function(){ wizGo("sensors"); };
+  } else if(wiz==="scale"){ S.textContent="Schritt 3 von 5"; T.textContent="Maßstab – Punkte setzen"; X.textContent="Tippe zwei Punkte mit bekanntem Abstand auf dem Plan. Punkte lassen sich danach verschieben.";
+    placeMode="cal"; calPts=[]; fit(); P.style.display="none"; B.style.display="block"; B.textContent="Zurück"; B.onclick=function(){ wizGo("pdf"); };
   } else if(wiz==="scaledist"){ S.textContent="Schritt 3 von 5"; T.textContent="Maßstab – Distanz"; X.textContent="Wie weit liegen die zwei Punkte in echt auseinander?";
     E.innerHTML='<div class="inrow"><input type="number" id="wzDist" value="'+lastCalDist+'" min="0.1" step="0.1"><span>Meter</span></div>';
     P.textContent="Maßstab setzen"; P.onclick=function(){ if(applyScale()){ flash("Maßstab gesetzt"); wizGo("start"); } };
     B.style.display="block"; B.textContent="Punkte neu"; B.onclick=function(){ wizGo("scale"); };
-  } else if(wiz==="start"){ S.textContent="Schritt 4 von 5"; T.textContent="Startpunkt setzen"; X.textContent="Tippe deinen aktuellen Standort auf dem Plan. Zum Feinjustieren den Punkt danach einfach verschieben.";
-    placeMode="start"; P.style.display="none";
-    B.style.display="block"; B.textContent="Zurück"; B.onclick=function(){ wizGo("scaledist"); };
-  } else if(wiz==="calibwalk"){ S.textContent="Schritt 5 von 5"; T.textContent="Laufkalibrierung – gehen"; X.textContent="Gehe vom Startpunkt etwa 8 Schritte schnurgerade. Dann „Fertig“.";
+  } else if(wiz==="start"){ S.textContent="Schritt 4 von 5"; T.textContent="Startpunkt setzen"; X.textContent="Tippe deinen aktuellen Standort auf dem Plan. Zum Feinjustieren danach den Punkt verschieben.";
+    placeMode="start"; P.style.display="none"; B.style.display="block"; B.textContent="Zurück"; B.onclick=function(){ wizGo("scaledist"); };
+  } else if(wiz==="calibwalk"){ S.textContent="Schritt 5 von 5"; T.textContent="Laufkalibrierung – gehen"; X.textContent="Vom Startpunkt etwa 8 Schritte schnurgerade gehen, dann „Fertig“.";
     E.innerHTML='<div class="big"><span id="wzSteps">0</span> Schritte</div>';
     calState="walking"; calSteps=0; calHeadings=[]; calStartPx={x:(pos||startPt).x,y:(pos||startPt).y};
     P.textContent="Fertig"; P.disabled=true; P.onclick=function(){ if(calSteps<3){flash("Weiter geradeaus");return;} wizGo("calibend"); };
     B.style.display="block"; B.textContent="Überspringen"; B.onclick=function(){ flash("Kalibrierung übersprungen"); wizGo("done"); };
   } else if(wiz==="calibend"){ S.textContent="Schritt 5 von 5"; T.textContent="Laufkalibrierung – Endpunkt"; X.textContent="Tippe jetzt deinen aktuellen (End-)Standort auf dem Plan.";
-    calState="awaitEnd"; P.style.display="none";
-    B.style.display="block"; B.textContent="Nochmal gehen"; B.onclick=function(){ wizGo("calibwalk"); };
+    calState="awaitEnd"; P.style.display="none"; B.style.display="block"; B.textContent="Nochmal gehen"; B.onclick=function(){ wizGo("calibwalk"); };
   }
 }
 
@@ -425,9 +396,8 @@ $("stepLen").onchange=function(e){ cfg.stepLen=parseFloat(e.target.value)||0.7; 
 $("sens").oninput=function(e){ cfg.sens=parseFloat(e.target.value); };
 $("rot").oninput=function(e){ rotOffset=parseInt(e.target.value); $("rotVal").textContent=rotOffset+"°"; requestDraw(); };
 $("bRecalib").onclick=function(){ if(!startPt||!pxPerMeter){flash("Erst Einrichtung abschließen");return;} openSettings(false); wizGo("calibwalk"); };
-$("bRestart").onclick=function(){ openSettings(false); calPts=[]; pxPerMeter=null; startPt=null; pos=null; path=[]; steps=0; if(tracking)toggleRec(); updateReadouts(); wizGo("welcome"); };
+$("bRestart").onclick=function(){ openSettings(false); calPts=[]; pxPerMeter=null; startPt=null; pos=null; path=[]; steps=0; if(tracking)toggleRec(); rotWithMe=false; $("zfollow").classList.remove("act"); updateReadouts(); wizGo("welcome"); };
 
-// ---------- helpers ----------
 function updateReadouts(){ $("rSteps").textContent=steps; $("rDist").textContent=(steps*cfg.stepLen).toFixed(1).replace(".",",")+" m"; }
 function setStatus(t,cls){ $("statusText").textContent=t; $("dot").className=cls==="err"?"err":cls==="warn"?"warn":cls==="on"?"on":""; }
 var hintT; function flash(t){ var h=$("hint"); h.textContent=t; h.classList.add("show"); clearTimeout(hintT); hintT=setTimeout(function(){h.classList.remove("show");},2600); }
