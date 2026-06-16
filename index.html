@@ -90,7 +90,7 @@
     <canvas id="cv"></canvas>
     <div id="hint"></div>
     <div id="zoom">
-      <button id="zin">+</button><button id="zout">−</button><button id="zfit" style="font-size:13px">FIT</button>
+      <button id="zrot" style="font-size:18px">⟳</button><button id="zin">+</button><button id="zout">−</button><button id="zfit" style="font-size:13px">FIT</button>
     </div>
   </div>
 
@@ -166,13 +166,17 @@ let heading=null, rotOffset=0;               // compass deg, plan rotation offse
 let steps=0;
 const cfg={stepLen:0.70, sens:1.1};
 
-// ---------- canvas sizing ----------
-function resize(){
+// ---------- canvas sizing (ResizeObserver keeps buffer matched to box) ----------
+let didFit=false;
+function syncSize(){
   const r=$("stage").getBoundingClientRect();
-  cv.width=r.width*dpr; cv.height=r.height*dpr;
-  draw();
+  const w=Math.max(1,Math.round(r.width*dpr)), h=Math.max(1,Math.round(r.height*dpr));
+  if(cv.width!==w||cv.height!==h){ cv.width=w; cv.height=h; }
+  if(mapImg && !didFit){ fit(); didFit=true; } else { draw(); }
 }
-window.addEventListener("resize",resize);
+if(window.ResizeObserver){ new ResizeObserver(syncSize).observe($("stage")); }
+window.addEventListener("resize",syncSize);
+window.addEventListener("orientationchange",()=>setTimeout(syncSize,300));
 
 // ---------- PDF ----------
 $("bPdf").onclick=()=>$("fPdf").click();
@@ -192,7 +196,7 @@ $("fPdf").onchange=async e=>{
     off.width=Math.round(vp.width); off.height=Math.round(vp.height);
     await page.render({canvasContext:off.getContext("2d"),viewport:vp}).promise;
     mapImg=off; imgW=off.width; imgH=off.height;
-    fit(); enable($("bCal")); 
+    fit(); didFit=true; enable($("bCal")); 
     setStatus("Grundriss geladen. Jetzt Maßstab kalibrieren.");
   }catch(err){ setStatus("PDF konnte nicht geladen werden: "+err.message,"err"); }
 };
@@ -207,49 +211,69 @@ function fit(){
   draw();
 }
 function img2scr(p){ return {x:p.x*view.scale+view.tx, y:p.y*view.scale+view.ty}; }
-function scr2img(x,y){ return {x:(x*dpr-view.tx)/view.scale, y:(y*dpr-view.ty)/view.scale}; }
+function scr2img(cx,cy){ const r=cv.getBoundingClientRect();
+  return {x:((cx-r.left)*dpr-view.tx)/view.scale, y:((cy-r.top)*dpr-view.ty)/view.scale}; }
 $("zin").onclick=()=>zoomAt(1.3); $("zout").onclick=()=>zoomAt(1/1.3); $("zfit").onclick=fit;
+$("zrot").onclick=rotateImg;
 function zoomAt(f){
   const cx=cv.width/2, cy=cv.height/2;
   view.tx=cx-(cx-view.tx)*f; view.ty=cy-(cy-view.ty)*f; view.scale*=f; draw();
 }
+function rotateImg(){
+  if(!mapImg) return;
+  const r=document.createElement("canvas");
+  r.width=imgH; r.height=imgW;
+  const c=r.getContext("2d");
+  c.translate(r.width/2,r.height/2); c.rotate(Math.PI/2); c.drawImage(mapImg,-imgW/2,-imgH/2);
+  mapImg=r; imgW=r.width; imgH=r.height;
+  // placements were in old coordinates -> reset
+  calPts=[]; pxPerMeter=null; startPt=null; pos=null; path=[]; steps=0;
+  $("calDistRow").style.display="none";
+  $("bStart").disabled=true; $("bTrack").disabled=true; $("bReset").disabled=true;
+  if(tracking){ $("bTrack").click(); }
+  updateReadouts(); fit(); flash("Plan gedreht – Maßstab neu setzen");
+}
 
 // ---------- drawing ----------
+function pin(s,color,label){
+  ctx.lineWidth=4*dpr; ctx.strokeStyle="rgba(10,13,18,.55)";
+  ctx.beginPath();ctx.arc(s.x,s.y,10*dpr,0,7);ctx.stroke();      // dark halo for contrast on white
+  ctx.fillStyle=color;ctx.beginPath();ctx.arc(s.x,s.y,8.5*dpr,0,7);ctx.fill();
+  ctx.lineWidth=2.5*dpr;ctx.strokeStyle="#fff";ctx.stroke();      // white ring
+  if(label){ ctx.fillStyle="#0a0d12";ctx.font="bold "+(12*dpr)+"px sans-serif";
+    ctx.textAlign="center";ctx.textBaseline="middle";ctx.fillText(label,s.x,s.y); }
+}
 function draw(){
   ctx.clearRect(0,0,cv.width,cv.height);
   if(mapImg){
     ctx.imageSmoothingQuality="high";
     ctx.drawImage(mapImg,view.tx,view.ty,imgW*view.scale,imgH*view.scale);
   }
-  // calibration line
+  // calibration
   if(calPts.length){
-    ctx.strokeStyle="#38bdf8"; ctx.fillStyle="#38bdf8"; ctx.lineWidth=2*dpr;
     if(calPts.length===2){ const a=img2scr(calPts[0]),b=img2scr(calPts[1]);
-      ctx.beginPath();ctx.moveTo(a.x,a.y);ctx.lineTo(b.x,b.y);ctx.stroke(); }
-    calPts.forEach(p=>{const s=img2scr(p);ctx.beginPath();ctx.arc(s.x,s.y,5*dpr,0,7);ctx.fill();});
+      ctx.strokeStyle="#38bdf8"; ctx.lineWidth=2.5*dpr; ctx.setLineDash([6*dpr,5*dpr]);
+      ctx.beginPath();ctx.moveTo(a.x,a.y);ctx.lineTo(b.x,b.y);ctx.stroke(); ctx.setLineDash([]); }
+    calPts.forEach((p,i)=>pin(img2scr(p),"#38bdf8",String(i+1)));
   }
   // path
   if(path.length>1){
-    ctx.strokeStyle="var(--amber)";ctx.strokeStyle="#f5a524";
-    ctx.lineWidth=3*dpr;ctx.lineJoin="round";ctx.lineCap="round";
+    ctx.strokeStyle="#f5a524";
+    ctx.lineWidth=3.5*dpr;ctx.lineJoin="round";ctx.lineCap="round";
     ctx.beginPath();
     path.forEach((p,i)=>{const s=img2scr(p); i?ctx.lineTo(s.x,s.y):ctx.moveTo(s.x,s.y);});
     ctx.stroke();
   }
-  // start marker
-  if(startPt){const s=img2scr(startPt);ctx.fillStyle="#3ecf8e";
-    ctx.beginPath();ctx.arc(s.x,s.y,6*dpr,0,7);ctx.fill();}
+  if(startPt) pin(img2scr(startPt),"#3ecf8e","S");
   // current position + heading needle
   if(pos){
     const s=img2scr(pos);
-    ctx.fillStyle="#f5a524";ctx.strokeStyle="#1a1205";ctx.lineWidth=2*dpr;
-    ctx.beginPath();ctx.arc(s.x,s.y,8*dpr,0,7);ctx.fill();ctx.stroke();
     if(heading!=null){
-      const a=(heading-rotOffset)*Math.PI/180;
-      const dx=Math.sin(a), dy=-Math.cos(a), L=26*dpr;
-      ctx.strokeStyle="#38bdf8";ctx.lineWidth=3*dpr;
-      ctx.beginPath();ctx.moveTo(s.x,s.y);ctx.lineTo(s.x+dx*L,s.y+dy*L);ctx.stroke();
+      const a=(heading-rotOffset)*Math.PI/180, L=30*dpr;
+      ctx.strokeStyle="#38bdf8";ctx.lineWidth=3.5*dpr;ctx.lineCap="round";
+      ctx.beginPath();ctx.moveTo(s.x,s.y);ctx.lineTo(s.x+Math.sin(a)*L,s.y-Math.cos(a)*L);ctx.stroke();
     }
+    pin(s,"#f5a524",null);
   }
 }
 
@@ -367,7 +391,7 @@ let hintT;
 function flash(t){ const h=$("hint"); h.textContent=t; h.classList.add("show");
   clearTimeout(hintT); hintT=setTimeout(()=>h.classList.remove("show"),2600); }
 
-resize();
+syncSize();
 </script>
 </body>
 </html>
