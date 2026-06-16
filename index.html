@@ -1,0 +1,373 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>Grundriss-Wegtracker</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<style>
+  :root{
+    --bg:#10141b; --surface:#1a212c; --surface-2:#222b38; --line:#2e3a4a;
+    --text:#e8edf4; --muted:#8d99ab; --amber:#f5a524; --amber-dim:#7a5a1c;
+    --cyan:#38bdf8; --red:#ef5e5e; --green:#3ecf8e;
+    --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+    --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{margin:0;height:100%;background:var(--bg);color:var(--text);
+    font-family:var(--sans);overscroll-behavior:none;touch-action:none}
+  #app{display:flex;flex-direction:column;height:100dvh}
+
+  /* readout bar */
+  header{display:flex;gap:1px;background:var(--line);
+    padding-top:env(safe-area-inset-top)}
+  .stat{flex:1;background:var(--bg);padding:10px 6px;text-align:center}
+  .stat .lbl{font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted)}
+  .stat .val{font-family:var(--mono);font-size:19px;font-weight:600;margin-top:2px}
+  .stat .val.amber{color:var(--amber)} .stat .val.cyan{color:var(--cyan)}
+  #status{font-size:11px;color:var(--muted);padding:6px 12px;background:var(--surface);
+    display:flex;align-items:center;gap:7px;border-bottom:1px solid var(--line)}
+  #dot{width:8px;height:8px;border-radius:50%;background:var(--muted);flex:none}
+  #dot.on{background:var(--green)} #dot.err{background:var(--red)}
+
+  /* canvas */
+  #stage{position:relative;flex:1;overflow:hidden;background:#0a0d12}
+  canvas{position:absolute;inset:0;width:100%;height:100%;display:block}
+  #hint{position:absolute;left:50%;top:14px;transform:translateX(-50%);
+    background:rgba(245,165,36,.16);border:1px solid var(--amber);color:var(--amber);
+    padding:7px 14px;border-radius:20px;font-size:13px;font-weight:600;
+    pointer-events:none;opacity:0;transition:opacity .2s;text-align:center;max-width:88%}
+  #hint.show{opacity:1}
+  #zoom{position:absolute;right:10px;bottom:10px;display:flex;flex-direction:column;gap:6px}
+  #zoom button{width:42px;height:42px;border-radius:10px;border:1px solid var(--line);
+    background:rgba(26,33,44,.9);color:var(--text);font-size:22px;font-family:var(--mono)}
+
+  /* controls */
+  footer{background:var(--surface);border-top:1px solid var(--line);
+    padding:10px 12px calc(10px + env(safe-area-inset-bottom))}
+  .row{display:flex;gap:8px;margin-bottom:8px}
+  .row:last-child{margin-bottom:0}
+  button.btn{flex:1;border:1px solid var(--line);background:var(--surface-2);color:var(--text);
+    border-radius:11px;padding:13px 8px;font-size:14px;font-weight:600;font-family:var(--sans)}
+  button.btn:disabled{opacity:.38}
+  button.btn.primary{background:var(--amber);color:#1a1205;border-color:var(--amber)}
+  button.btn.live{background:var(--red);color:#fff;border-color:var(--red)}
+  button.btn.ghost{background:transparent}
+  .pill{font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);
+    margin:2px 2px 7px}
+  details{background:var(--surface-2);border:1px solid var(--line);border-radius:11px;
+    margin-bottom:8px;overflow:hidden}
+  summary{padding:11px 13px;font-size:13px;font-weight:600;cursor:pointer;list-style:none;
+    display:flex;justify-content:space-between;align-items:center}
+  summary::-webkit-details-marker{display:none}
+  summary::after{content:"⌄";color:var(--muted);font-size:16px}
+  details[open] summary::after{content:"⌃"}
+  .panel{padding:0 13px 13px}
+  .field{display:flex;align-items:center;justify-content:space-between;gap:10px;
+    padding:9px 0;border-top:1px solid var(--line)}
+  .field:first-child{border-top:none}
+  .field label{font-size:13px;color:var(--muted)}
+  .field .ctl{display:flex;align-items:center;gap:8px}
+  input[type=number]{width:78px;background:var(--bg);border:1px solid var(--line);color:var(--text);
+    border-radius:8px;padding:8px;font-family:var(--mono);font-size:14px;text-align:right}
+  input[type=range]{width:130px;accent-color:var(--amber)}
+  .mini{padding:7px 11px;font-size:12px;border-radius:8px;border:1px solid var(--line);
+    background:var(--surface);color:var(--text);font-weight:600;flex:none}
+  .note{font-size:11px;color:var(--muted);line-height:1.45;margin-top:8px}
+  .seq{font-family:var(--mono);color:var(--amber);margin-right:6px}
+</style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <div class="stat"><div class="lbl">Schritte</div><div class="val amber" id="rSteps">0</div></div>
+    <div class="stat"><div class="lbl">Strecke</div><div class="val" id="rDist">0,0 m</div></div>
+    <div class="stat"><div class="lbl">Kurs</div><div class="val cyan" id="rHead">–</div></div>
+  </header>
+  <div id="status"><span id="dot"></span><span id="statusText">Bereit. Sensoren aktivieren und Grundriss laden.</span></div>
+
+  <div id="stage">
+    <canvas id="cv"></canvas>
+    <div id="hint"></div>
+    <div id="zoom">
+      <button id="zin">+</button><button id="zout">−</button><button id="zfit" style="font-size:13px">FIT</button>
+    </div>
+  </div>
+
+  <footer>
+    <details id="setup" open>
+      <summary>Einrichtung</summary>
+      <div class="panel">
+        <div class="field">
+          <label><span class="seq">1</span>Sensoren freigeben</label>
+          <button class="mini" id="bSensors">Aktivieren</button>
+        </div>
+        <div class="field">
+          <label><span class="seq">2</span>Grundriss (PDF)</label>
+          <button class="mini" id="bPdf">PDF wählen</button>
+          <input type="file" id="fPdf" accept="application/pdf" hidden>
+        </div>
+        <div class="field">
+          <label><span class="seq">3</span>Maßstab kalibrieren</label>
+          <button class="mini" id="bCal" disabled>2 Punkte tippen</button>
+        </div>
+        <div class="field" id="calDistRow" style="display:none">
+          <label>Reale Distanz</label>
+          <div class="ctl"><input type="number" id="calDist" value="5" min="0.1" step="0.1"> m
+            <button class="mini" id="bCalApply">Setzen</button></div>
+        </div>
+        <div class="field">
+          <label><span class="seq">4</span>Startpunkt setzen</label>
+          <button class="mini" id="bStart" disabled>Auf Plan tippen</button>
+        </div>
+        <div class="field">
+          <label>Schrittlänge</label>
+          <div class="ctl"><input type="number" id="stepLen" value="0.70" min="0.3" max="1.2" step="0.01"> m</div>
+        </div>
+        <div class="field">
+          <label>Empfindlichkeit</label>
+          <div class="ctl"><input type="range" id="sens" min="0.6" max="2.2" step="0.05" value="1.1"></div>
+        </div>
+        <div class="field">
+          <label>Karte drehen (Kurs-Offset)</label>
+          <div class="ctl"><input type="range" id="rot" min="0" max="359" step="1" value="0">
+            <span class="val" style="font-family:var(--mono);font-size:13px;color:var(--cyan)" id="rotVal">0°</span></div>
+        </div>
+        <div class="note">Maßstab tippt zwei Punkte mit bekanntem Abstand (z. B. eine Türbreite oder ein Vermaßungsmaß). Den Kurs-Offset so einstellen, dass die Laufrichtung auf dem Plan stimmt — ein paar Schritte gehen, dann nachjustieren.</div>
+      </div>
+    </details>
+
+    <div class="row">
+      <button class="btn primary" id="bTrack" disabled>Tracking starten</button>
+      <button class="btn" id="bAnchor" disabled>Position korrigieren</button>
+    </div>
+    <div class="row">
+      <button class="btn ghost" id="bReset" disabled>Weg löschen</button>
+    </div>
+  </footer>
+</div>
+
+<script>
+"use strict";
+const $=id=>document.getElementById(id);
+const dpr=Math.min(window.devicePixelRatio||1,2.5);
+const cv=$("cv"), ctx=cv.getContext("2d");
+
+// ---------- state ----------
+let mapImg=null, imgW=0, imgH=0;            // rendered PDF page (offscreen canvas)
+let view={scale:1,tx:0,ty:0};
+let pxPerMeter=null;                         // from calibration (image px per meter)
+let path=[];                                 // points in image-space {x,y}
+let startPt=null, pos=null;
+let calPts=[];                               // calibration taps
+let placeMode="none";                        // none|cal|start|anchor
+let tracking=false;
+let heading=null, rotOffset=0;               // compass deg, plan rotation offset deg
+let steps=0;
+const cfg={stepLen:0.70, sens:1.1};
+
+// ---------- canvas sizing ----------
+function resize(){
+  const r=$("stage").getBoundingClientRect();
+  cv.width=r.width*dpr; cv.height=r.height*dpr;
+  draw();
+}
+window.addEventListener("resize",resize);
+
+// ---------- PDF ----------
+$("bPdf").onclick=()=>$("fPdf").click();
+$("fPdf").onchange=async e=>{
+  const f=e.target.files[0]; if(!f) return;
+  setStatus("PDF wird geladen …");
+  try{
+    pdfjsLib.GlobalWorkerOptions.workerSrc="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+    const buf=await f.arrayBuffer();
+    const pdf=await pdfjsLib.getDocument({data:buf}).promise;
+    const page=await pdf.getPage(1);
+    const base=page.getViewport({scale:1});
+    const target=Math.min(2200, Math.max(1400, base.width)); // render resolution
+    const rs=target/base.width;
+    const vp=page.getViewport({scale:rs});
+    const off=document.createElement("canvas");
+    off.width=Math.round(vp.width); off.height=Math.round(vp.height);
+    await page.render({canvasContext:off.getContext("2d"),viewport:vp}).promise;
+    mapImg=off; imgW=off.width; imgH=off.height;
+    fit(); enable($("bCal")); 
+    setStatus("Grundriss geladen. Jetzt Maßstab kalibrieren.");
+  }catch(err){ setStatus("PDF konnte nicht geladen werden: "+err.message,"err"); }
+};
+
+// ---------- view helpers ----------
+function fit(){
+  if(!mapImg) return;
+  const cw=cv.width, ch=cv.height;
+  view.scale=Math.min(cw/imgW, ch/imgH)*0.95;
+  view.tx=(cw-imgW*view.scale)/2;
+  view.ty=(ch-imgH*view.scale)/2;
+  draw();
+}
+function img2scr(p){ return {x:p.x*view.scale+view.tx, y:p.y*view.scale+view.ty}; }
+function scr2img(x,y){ return {x:(x*dpr-view.tx)/view.scale, y:(y*dpr-view.ty)/view.scale}; }
+$("zin").onclick=()=>zoomAt(1.3); $("zout").onclick=()=>zoomAt(1/1.3); $("zfit").onclick=fit;
+function zoomAt(f){
+  const cx=cv.width/2, cy=cv.height/2;
+  view.tx=cx-(cx-view.tx)*f; view.ty=cy-(cy-view.ty)*f; view.scale*=f; draw();
+}
+
+// ---------- drawing ----------
+function draw(){
+  ctx.clearRect(0,0,cv.width,cv.height);
+  if(mapImg){
+    ctx.imageSmoothingQuality="high";
+    ctx.drawImage(mapImg,view.tx,view.ty,imgW*view.scale,imgH*view.scale);
+  }
+  // calibration line
+  if(calPts.length){
+    ctx.strokeStyle="#38bdf8"; ctx.fillStyle="#38bdf8"; ctx.lineWidth=2*dpr;
+    if(calPts.length===2){ const a=img2scr(calPts[0]),b=img2scr(calPts[1]);
+      ctx.beginPath();ctx.moveTo(a.x,a.y);ctx.lineTo(b.x,b.y);ctx.stroke(); }
+    calPts.forEach(p=>{const s=img2scr(p);ctx.beginPath();ctx.arc(s.x,s.y,5*dpr,0,7);ctx.fill();});
+  }
+  // path
+  if(path.length>1){
+    ctx.strokeStyle="var(--amber)";ctx.strokeStyle="#f5a524";
+    ctx.lineWidth=3*dpr;ctx.lineJoin="round";ctx.lineCap="round";
+    ctx.beginPath();
+    path.forEach((p,i)=>{const s=img2scr(p); i?ctx.lineTo(s.x,s.y):ctx.moveTo(s.x,s.y);});
+    ctx.stroke();
+  }
+  // start marker
+  if(startPt){const s=img2scr(startPt);ctx.fillStyle="#3ecf8e";
+    ctx.beginPath();ctx.arc(s.x,s.y,6*dpr,0,7);ctx.fill();}
+  // current position + heading needle
+  if(pos){
+    const s=img2scr(pos);
+    ctx.fillStyle="#f5a524";ctx.strokeStyle="#1a1205";ctx.lineWidth=2*dpr;
+    ctx.beginPath();ctx.arc(s.x,s.y,8*dpr,0,7);ctx.fill();ctx.stroke();
+    if(heading!=null){
+      const a=(heading-rotOffset)*Math.PI/180;
+      const dx=Math.sin(a), dy=-Math.cos(a), L=26*dpr;
+      ctx.strokeStyle="#38bdf8";ctx.lineWidth=3*dpr;
+      ctx.beginPath();ctx.moveTo(s.x,s.y);ctx.lineTo(s.x+dx*L,s.y+dy*L);ctx.stroke();
+    }
+  }
+}
+
+// ---------- tap handling (tap = place, drag = pan) ----------
+let down=null;
+cv.addEventListener("pointerdown",e=>{ down={x:e.clientX,y:e.clientY,t:Date.now(),
+  tx:view.tx,ty:view.ty,moved:false}; cv.setPointerCapture(e.pointerId); });
+cv.addEventListener("pointermove",e=>{ if(!down)return;
+  const dx=e.clientX-down.x, dy=e.clientY-down.y;
+  if(Math.hypot(dx,dy)>6) down.moved=true;
+  view.tx=down.tx+dx*dpr; view.ty=down.ty+dy*dpr; draw(); });
+cv.addEventListener("pointerup",e=>{ if(!down)return;
+  const isTap=!down.moved && Date.now()-down.t<450;
+  if(isTap && mapImg) handleTap(scr2img(e.clientX,e.clientY));
+  down=null; });
+
+function handleTap(p){
+  if(placeMode==="cal"){
+    calPts.push(p);
+    if(calPts.length>=2){ calPts=calPts.slice(-2); $("calDistRow").style.display="flex"; flash("Reale Distanz eingeben und „Setzen“"); placeMode="none"; }
+    else flash("Zweiten Punkt tippen");
+    draw();
+  } else if(placeMode==="start"){
+    startPt={...p}; pos={...p}; path=[{...p}]; placeMode="none";
+    enable($("bReset")); maybeEnableTrack(); flash("Startpunkt gesetzt"); draw();
+  } else if(placeMode==="anchor"){
+    pos={...p}; path.push({...p}); placeMode="none"; flash("Position korrigiert"); draw();
+  }
+}
+
+// ---------- setup buttons ----------
+$("bCal").onclick=()=>{ calPts=[]; $("calDistRow").style.display="none"; placeMode="cal"; flash("Ersten Punkt auf dem Plan tippen"); };
+$("bCalApply").onclick=()=>{
+  if(calPts.length<2)return;
+  const dpx=Math.hypot(calPts[0].x-calPts[1].x, calPts[0].y-calPts[1].y);
+  const m=parseFloat($("calDist").value);
+  if(!(m>0)||!(dpx>0)){flash("Ungültige Distanz");return;}
+  pxPerMeter=dpx/m; enable($("bStart"));
+  setStatus("Maßstab: "+pxPerMeter.toFixed(1)+" px/m. Jetzt Startpunkt setzen.");
+  flash("Maßstab gesetzt"); maybeEnableTrack();
+};
+$("bStart").onclick=()=>{ if(!pxPerMeter){flash("Erst Maßstab setzen");return;} placeMode="start"; flash("Startpunkt auf dem Plan tippen"); };
+$("bAnchor").onclick=()=>{ placeMode="anchor"; flash("Deine echte Position auf dem Plan tippen"); };
+$("bReset").onclick=()=>{ if(startPt){pos={...startPt};path=[{...startPt}];} steps=0; updateReadouts(); draw(); };
+
+$("stepLen").onchange=e=>cfg.stepLen=parseFloat(e.target.value)||0.7;
+$("sens").oninput=e=>cfg.sens=parseFloat(e.target.value);
+$("rot").oninput=e=>{ rotOffset=parseInt(e.target.value); $("rotVal").textContent=rotOffset+"°"; draw(); };
+
+// ---------- sensors ----------
+$("bSensors").onclick=async ()=>{
+  if(!window.isSecureContext){ setStatus("Sensoren brauchen HTTPS. Seite über https:// öffnen.","err"); return; }
+  try{
+    if(typeof DeviceMotionEvent!=="undefined" && DeviceMotionEvent.requestPermission){
+      const m=await DeviceMotionEvent.requestPermission();
+      if(m!=="granted"){ setStatus("Bewegungszugriff abgelehnt.","err"); return; }
+    }
+    if(typeof DeviceOrientationEvent!=="undefined" && DeviceOrientationEvent.requestPermission){
+      try{ await DeviceOrientationEvent.requestPermission(); }catch(_){}
+    }
+    window.addEventListener("devicemotion",onMotion,true);
+    window.addEventListener("deviceorientation",onOrient,true);
+    $("bSensors").textContent="Aktiv"; $("bSensors").disabled=true;
+    setStatus("Sensoren aktiv.","on"); maybeEnableTrack();
+  }catch(err){ setStatus("Sensorfehler: "+err.message,"err"); }
+};
+function onOrient(e){
+  let h=(typeof e.webkitCompassHeading==="number")?e.webkitCompassHeading
+       :(e.alpha!=null? 360-e.alpha : null);
+  if(h!=null){ heading=h; $("rHead").textContent=Math.round(h)+"°"; if(tracking)draw(); }
+}
+
+// step detection on acceleration magnitude
+let g=9.81, lastStep=0;
+function onMotion(e){
+  const a=e.accelerationIncludingGravity||e.acceleration; if(!a)return;
+  const m=Math.hypot(a.x||0,a.y||0,a.z||0);
+  g=g*0.92+m*0.08;                 // gravity estimate
+  const d=m-g;                     // dynamic component
+  const now=e.timeStamp||Date.now();
+  if(tracking && d>cfg.sens && now-lastStep>270){ lastStep=now; onStep(); }
+}
+function onStep(){
+  if(!pos||!pxPerMeter)return;
+  steps++;
+  const a=((heading||0)-rotOffset)*Math.PI/180;
+  const dpx=cfg.stepLen*pxPerMeter;
+  pos={x:pos.x+Math.sin(a)*dpx, y:pos.y-Math.cos(a)*dpx};
+  path.push({...pos}); updateReadouts(); draw();
+}
+
+// ---------- tracking ----------
+$("bTrack").onclick=()=>{
+  tracking=!tracking;
+  $("bTrack").textContent=tracking?"Tracking stoppen":"Tracking starten";
+  $("bTrack").classList.toggle("live",tracking);
+  $("bAnchor").disabled=!tracking;
+  if(tracking){ $("setup").open=false; setStatus("Tracking läuft … Bildschirm anlassen.","on"); }
+  else setStatus("Tracking pausiert.","on");
+};
+function maybeEnableTrack(){
+  // sensors are "active" once the activate button has been disabled
+  if(mapImg&&pxPerMeter&&startPt&&$("bSensors").disabled){ enable($("bTrack")); }
+}
+
+// ---------- ui helpers ----------
+function enable(b){b.disabled=false;}
+function updateReadouts(){
+  $("rSteps").textContent=steps;
+  $("rDist").textContent=(steps*cfg.stepLen).toFixed(1).replace(".",",")+" m";
+}
+function setStatus(t,cls){ $("statusText").textContent=t;
+  $("dot").className=cls==="err"?"err":cls==="on"?"on":""; }
+let hintT;
+function flash(t){ const h=$("hint"); h.textContent=t; h.classList.add("show");
+  clearTimeout(hintT); hintT=setTimeout(()=>h.classList.remove("show"),2600); }
+
+resize();
+</script>
+</body>
+</html>
