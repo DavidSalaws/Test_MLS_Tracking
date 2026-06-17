@@ -6,7 +6,7 @@
 <title>Wegtracker EG</title>
 <style>
   :root{ --navy:#222b38; --ink:#1d2733; --muted:#6b7785; --cyan:#29abe2; --cyan-d:#1f8cbb;
-    --grey:#bcc3c9; --bg:#eef1f4; --card:#fff; --line:#d9dee3; --stage:#1b232e;
+    --grey:#bcc3c9; --bg:#eef1f4; --card:#fff; --line:#d9dee3; --stage:#9aa1a8;
     --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif; --mono:ui-monospace,Menlo,Consolas,monospace; }
   *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
   html,body{margin:0;height:100%;background:var(--bg);color:var(--ink);font-family:var(--sans);overscroll-behavior:none}
@@ -173,7 +173,7 @@ function draw(){ computeM(); ctx.setTransform(1,0,0,1,0,0); ctx.clearRect(0,0,cv
   if(rooms.length){ ctx.fillStyle="#eef3f7"; ctx.strokeStyle="rgba(120,140,160,.35)"; ctx.lineWidth=1*dpr;
     for(ri=0;ri<rooms.length;ri++){ var poly=rooms[ri].poly; if(!poly||poly.length<3)continue; ctx.beginPath();
       for(pi=0;pi<poly.length;pi++){ sp=img2scr({x:poly[pi][0],y:poly[pi][1]}); if(pi)ctx.lineTo(sp.x,sp.y); else ctx.moveTo(sp.x,sp.y);} ctx.closePath(); ctx.fill(); ctx.stroke(); } }
-  drawWalls(0,"#7a8696",1.2); drawWalls(1,"#222b38",2.4); drawWalls(2,"#1f8cbb",2.6); drawRoomNames();
+  drawWalls(0,"#2b3543",1.3); drawWalls(1,"#2b3543",2.8); drawWalls(2,"#2b3543",2.1); drawRoomNames();
   if(path.length>1){ ctx.lineJoin="round";ctx.lineCap="round";
     ctx.strokeStyle="rgba(20,30,45,.30)";ctx.lineWidth=5.5*dpr; strokePath();
     ctx.strokeStyle="#1f8cbb";ctx.lineWidth=3*dpr; strokePath(); drawArrows(); }
@@ -184,12 +184,32 @@ function draw(){ computeM(); ctx.setTransform(1,0,0,1,0,0); ctx.clearRect(0,0,cv
     pin(s,"#29abe2",null); } }
 function drawWalls(kind,color,wd){ ctx.strokeStyle=color; ctx.lineWidth=wd*dpr; ctx.lineCap="round"; ctx.beginPath();
   for(var i=0;i<walls.length;i++){ var w=walls[i]; if((w[4]||1)!==kind)continue; var a=img2scr({x:w[0],y:w[1]}),b=img2scr({x:w[2],y:w[3]}); ctx.moveTo(a.x,a.y); ctx.lineTo(b.x,b.y);} ctx.stroke(); }
-function drawRoomNames(){ if(!rooms.length)return; ctx.fillStyle="#46566a"; ctx.textAlign="center"; ctx.textBaseline="middle";
+function roundRect(x,y,w,h,r){ ctx.beginPath(); ctx.moveTo(x+r,y); ctx.arcTo(x+w,y,x+w,y+h,r); ctx.arcTo(x+w,y+h,x,y+h,r); ctx.arcTo(x,y+h,x,y,r); ctx.arcTo(x,y,x+w,y,r); ctx.closePath(); }
+function truncTo(str,maxW){ if(ctx.measureText(str).width<=maxW) return str; var t=str; while(t.length>1 && ctx.measureText(t+"…").width>maxW) t=t.slice(0,-1); return t+"…"; }
+function wrapText(name,maxW){ var words=name.split(/\s+/), lines=[], cur="";
+  for(var i=0;i<words.length;i++){ var w=words[i]; var test=cur?cur+" "+w:w;
+    if(ctx.measureText(test).width<=maxW){ cur=test; }
+    else { if(cur) lines.push(cur); if(ctx.measureText(w).width<=maxW){ cur=w; } else { lines.push(truncTo(w,maxW)); cur=""; } } }
+  if(cur) lines.push(cur); return lines; }
+function drawRoomNames(){ if(!rooms.length)return;
   for(var ri=0;ri<rooms.length;ri++){ var rm=rooms[ri]; if(!rm.name||!rm.c)continue; var poly=rm.poly; if(!poly||poly.length<3)continue;
-    var mnx=1e9,mny=1e9,mxx=-1e9,mxy=-1e9; for(var pi=0;pi<poly.length;pi++){ var sp=img2scr({x:poly[pi][0],y:poly[pi][1]}); if(sp.x<mnx)mnx=sp.x; if(sp.x>mxx)mxx=sp.x; if(sp.y<mny)mny=sp.y; if(sp.y>mxy)mxy=sp.y; }
-    var bw=mxx-mnx, bh=mxy-mny; if(Math.min(bw,bh)<42*dpr) continue;
-    var fs=Math.max(9*dpr,Math.min(13*dpr, bw/Math.max(6,rm.name.length)*1.5)); ctx.font=fs+"px -apple-system,sans-serif";
-    var c=img2scr({x:rm.c[0],y:rm.c[1]}); var nm=rm.name.length>18?rm.name.slice(0,17)+"…":rm.name; ctx.fillText(nm,c.x,c.y); } }
+    var mnx=1e9,mny=1e9,mxx=-1e9,mxy=-1e9,sp,pi;
+    for(pi=0;pi<poly.length;pi++){ sp=img2scr({x:poly[pi][0],y:poly[pi][1]}); if(sp.x<mnx)mnx=sp.x; if(sp.x>mxx)mxx=sp.x; if(sp.y<mny)mny=sp.y; if(sp.y>mxy)mxy=sp.y; }
+    var pad=5*dpr, availW=(mxx-mnx)-2*pad, availH=(mxy-mny)-2*pad;
+    if(availW<26*dpr||availH<11*dpr) continue;
+    var sizes=[13,11,9.5,8], chosen=null;
+    for(var si=0;si<sizes.length;si++){ var fs=sizes[si]*dpr; ctx.font="600 "+fs+"px -apple-system,sans-serif";
+      var lines=wrapText(rm.name,availW), lh=fs*1.12, th=lines.length*lh, mw=0, li;
+      for(li=0;li<lines.length;li++){ var ww=ctx.measureText(lines[li]).width; if(ww>mw)mw=ww; }
+      if(th<=availH && mw<=availW){ chosen={fs:fs,lines:lines,lh:lh,th:th,mw:mw}; break; }
+      if(si===sizes.length-1){ var one=truncTo(rm.name,availW); chosen={fs:fs,lines:[one],lh:lh,th:lh,mw:Math.min(availW,ctx.measureText(one).width)}; } }
+    if(!chosen) continue;
+    var c=img2scr({x:rm.c[0],y:rm.c[1]});
+    var cx=Math.max(mnx+pad+chosen.mw/2, Math.min(mxx-pad-chosen.mw/2, c.x));
+    var cy=Math.max(mny+pad+chosen.th/2, Math.min(mxy-pad-chosen.th/2, c.y));
+    ctx.fillStyle="rgba(238,243,247,0.82)"; roundRect(cx-chosen.mw/2-4*dpr, cy-chosen.th/2-2*dpr, chosen.mw+8*dpr, chosen.th+4*dpr, 4*dpr); ctx.fill();
+    ctx.fillStyle="#2c3744"; ctx.textAlign="center"; ctx.textBaseline="middle"; ctx.font="600 "+chosen.fs+"px -apple-system,sans-serif";
+    var sy=cy-chosen.th/2+chosen.lh/2; for(var k=0;k<chosen.lines.length;k++){ ctx.fillText(chosen.lines[k], cx, sy+k*chosen.lh); } } }
 function strokePath(){ ctx.beginPath(); path.forEach(function(p,i){ var s=img2scr(p); if(i)ctx.lineTo(s.x,s.y); else ctx.moveTo(s.x,s.y); }); ctx.stroke(); }
 function arrowHead(x,y,a){ var L=8*dpr; ctx.beginPath();ctx.moveTo(x-Math.cos(a-0.5)*L,y-Math.sin(a-0.5)*L);ctx.lineTo(x,y);ctx.lineTo(x-Math.cos(a+0.5)*L,y-Math.sin(a+0.5)*L);ctx.stroke(); }
 function drawArrows(){ ctx.strokeStyle="#16557a"; ctx.lineWidth=2.6*dpr; ctx.lineCap="round"; var acc=0, gap=72*dpr, prev=img2scr(path[0]);
