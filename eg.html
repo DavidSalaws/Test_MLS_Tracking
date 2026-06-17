@@ -82,6 +82,11 @@
       <button class="btn" id="bAnchor" disabled>Korrektur</button>
       <button class="btn icon" id="bReset" title="Weg löschen">🗑</button>
     </div>
+    <div class="row" style="align-items:center;gap:10px;margin-top:9px">
+      <span style="font-size:12px;color:var(--muted);white-space:nowrap">Karte drehen</span>
+      <input type="range" id="rot2" min="0" max="359" step="1" value="0" style="flex:1">
+      <span id="rotVal2" style="font-family:var(--mono);color:var(--cyan-d);font-size:12px;width:34px;text-align:right">0°</span>
+    </div>
   </div>
   <input type="file" id="fPlan" accept=".json,application/json" style="display:none">
   <div id="scrim"></div>
@@ -126,9 +131,10 @@ window.addEventListener("resize",syncSize);
 window.addEventListener("orientationchange",function(){setTimeout(syncSize,300);});
 
 function applyPlan(j){ var H=j.bounds.maxy;
-  walls=j.walls.map(function(w){return [w[0],H-w[1],w[2],H-w[3]];});
+  walls=j.walls.map(function(w){return [w[0],H-w[1],w[2],H-w[3], w.length>4?w[4]:1];});
   doors=(j.doors||[]).map(function(d){return [d[0],H-d[1]];});
-  rooms=(j.rooms||[]).map(function(poly){return poly.map(function(p){return [p[0],H-p[1]];});});
+  rooms=(j.rooms||[]).map(function(r){ if(Array.isArray(r)) return {poly:r.map(function(p){return [p[0],H-p[1]];}),name:"",c:null};
+    return {poly:(r.poly||[]).map(function(p){return [p[0],H-p[1]];}), name:r.name||"", c:r.c?[r.c[0],H-r.c[1]]:null}; });
   planBounds={minx:0,miny:0,maxx:j.bounds.maxx,maxy:j.bounds.maxy};
   startPt=null; pos=null; path=[]; steps=0; distM=0; lastAnchorIdx=0;
   didFit=false; fit(); didFit=true; setStatus("Grundriss "+(j.storey||"")+" geladen.","on"); }
@@ -152,23 +158,22 @@ $("zin").onclick=function(){zoomAt(1.3);}; $("zout").onclick=function(){zoomAt(1
 $("zfollow").onclick=function(){ rotWithMe=!rotWithMe; $("zfollow").classList.toggle("act",rotWithMe); flash(rotWithMe?"Karte dreht mit dir":"Karte fest"); requestDraw(); };
 function zoomAt(f){ var cx=cv.width/2, cy=cv.height/2; view.tx=cx-(cx-view.tx)*f; view.ty=cy-(cy-view.ty)*f; view.scale*=f; requestDraw(); }
 function rotatePlan(){ if(!planBounds)return; var H=planBounds.maxy; var T=function(x,y){return [H-y,x];};
-  walls=walls.map(function(w){var a=T(w[0],w[1]),b=T(w[2],w[3]);return [a[0],a[1],b[0],b[1]];});
+  walls=walls.map(function(w){var a=T(w[0],w[1]),b=T(w[2],w[3]);return [a[0],a[1],b[0],b[1],w[4]];});
   doors=doors.map(function(d){return T(d[0],d[1]);});
-  rooms=rooms.map(function(poly){return poly.map(function(p){return T(p[0],p[1]);});});
+  rooms=rooms.map(function(rm){return {poly:rm.poly.map(function(p){var a=T(p[0],p[1]);return [a[0],a[1]];}), name:rm.name, c:rm.c?(function(){var a=T(rm.c[0],rm.c[1]);return [a[0],a[1]];})():null};});
   var tp=function(p){if(!p)return p;var a=T(p.x,p.y);return {x:a[0],y:a[1]};};
   if(startPt)startPt=tp(startPt); if(pos)pos=tp(pos); path=path.map(tp); if(calStartPx)calStartPx=tp(calStartPx);
   planBounds={minx:0,miny:0,maxx:planBounds.maxy,maxy:planBounds.maxx};
-  rotOffset=((rotOffset-90)%360+360)%360; $("rot").value=rotOffset; $("rotVal").textContent=rotOffset+"°"; fit(); }
+  setRotOffset(rotOffset-90); fit(); }
 
 function pin(s,color,label){ ctx.lineWidth=4*dpr; ctx.strokeStyle="rgba(20,30,45,.45)"; ctx.beginPath();ctx.arc(s.x,s.y,10*dpr,0,7);ctx.stroke();
   ctx.fillStyle=color;ctx.beginPath();ctx.arc(s.x,s.y,8.5*dpr,0,7);ctx.fill(); ctx.lineWidth=2.5*dpr;ctx.strokeStyle="#fff";ctx.stroke();
   if(label){ ctx.fillStyle="#fff";ctx.font="bold "+(12*dpr)+"px sans-serif";ctx.textAlign="center";ctx.textBaseline="middle";ctx.fillText(label,s.x,s.y);} }
-function draw(){ computeM(); ctx.setTransform(1,0,0,1,0,0); ctx.clearRect(0,0,cv.width,cv.height);
-  if(rooms.length){ ctx.fillStyle="#eef3f7"; ctx.strokeStyle="rgba(120,140,160,.4)"; ctx.lineWidth=1*dpr;
-    for(var ri=0;ri<rooms.length;ri++){ var poly=rooms[ri]; if(poly.length<3)continue; ctx.beginPath();
-      for(var pi=0;pi<poly.length;pi++){ var sp=img2scr({x:poly[pi][0],y:poly[pi][1]}); if(pi)ctx.lineTo(sp.x,sp.y); else ctx.moveTo(sp.x,sp.y);} ctx.closePath(); ctx.fill(); ctx.stroke(); } }
-  if(walls.length){ ctx.strokeStyle="#222b38"; ctx.lineWidth=1.9*dpr; ctx.lineCap="round"; ctx.beginPath();
-    for(var i=0;i<walls.length;i++){ var w=walls[i]; var a=img2scr({x:w[0],y:w[1]}), b=img2scr({x:w[2],y:w[3]}); ctx.moveTo(a.x,a.y); ctx.lineTo(b.x,b.y);} ctx.stroke(); }
+function draw(){ computeM(); ctx.setTransform(1,0,0,1,0,0); ctx.clearRect(0,0,cv.width,cv.height); var ri,pi,sp;
+  if(rooms.length){ ctx.fillStyle="#eef3f7"; ctx.strokeStyle="rgba(120,140,160,.35)"; ctx.lineWidth=1*dpr;
+    for(ri=0;ri<rooms.length;ri++){ var poly=rooms[ri].poly; if(!poly||poly.length<3)continue; ctx.beginPath();
+      for(pi=0;pi<poly.length;pi++){ sp=img2scr({x:poly[pi][0],y:poly[pi][1]}); if(pi)ctx.lineTo(sp.x,sp.y); else ctx.moveTo(sp.x,sp.y);} ctx.closePath(); ctx.fill(); ctx.stroke(); } }
+  drawWalls(0,"#7a8696",1.2); drawWalls(1,"#222b38",2.4); drawWalls(2,"#1f8cbb",2.6); drawRoomNames();
   if(path.length>1){ ctx.lineJoin="round";ctx.lineCap="round";
     ctx.strokeStyle="rgba(20,30,45,.30)";ctx.lineWidth=5.5*dpr; strokePath();
     ctx.strokeStyle="#1f8cbb";ctx.lineWidth=3*dpr; strokePath(); drawArrows(); }
@@ -177,6 +182,14 @@ function draw(){ computeM(); ctx.setTransform(1,0,0,1,0,0); ctx.clearRect(0,0,cv
     if(heading!=null){ var ang=(heading-rotOffset)*Math.PI/180+viewRot, L=30*dpr; ctx.strokeStyle="#222b38";ctx.lineWidth=3.5*dpr;ctx.lineCap="round";
       ctx.beginPath();ctx.moveTo(s.x,s.y);ctx.lineTo(s.x+Math.sin(ang)*L,s.y-Math.cos(ang)*L);ctx.stroke(); }
     pin(s,"#29abe2",null); } }
+function drawWalls(kind,color,wd){ ctx.strokeStyle=color; ctx.lineWidth=wd*dpr; ctx.lineCap="round"; ctx.beginPath();
+  for(var i=0;i<walls.length;i++){ var w=walls[i]; if((w[4]||1)!==kind)continue; var a=img2scr({x:w[0],y:w[1]}),b=img2scr({x:w[2],y:w[3]}); ctx.moveTo(a.x,a.y); ctx.lineTo(b.x,b.y);} ctx.stroke(); }
+function drawRoomNames(){ if(!rooms.length)return; ctx.fillStyle="#46566a"; ctx.textAlign="center"; ctx.textBaseline="middle";
+  for(var ri=0;ri<rooms.length;ri++){ var rm=rooms[ri]; if(!rm.name||!rm.c)continue; var poly=rm.poly; if(!poly||poly.length<3)continue;
+    var mnx=1e9,mny=1e9,mxx=-1e9,mxy=-1e9; for(var pi=0;pi<poly.length;pi++){ var sp=img2scr({x:poly[pi][0],y:poly[pi][1]}); if(sp.x<mnx)mnx=sp.x; if(sp.x>mxx)mxx=sp.x; if(sp.y<mny)mny=sp.y; if(sp.y>mxy)mxy=sp.y; }
+    var bw=mxx-mnx, bh=mxy-mny; if(Math.min(bw,bh)<42*dpr) continue;
+    var fs=Math.max(9*dpr,Math.min(13*dpr, bw/Math.max(6,rm.name.length)*1.5)); ctx.font=fs+"px -apple-system,sans-serif";
+    var c=img2scr({x:rm.c[0],y:rm.c[1]}); var nm=rm.name.length>18?rm.name.slice(0,17)+"…":rm.name; ctx.fillText(nm,c.x,c.y); } }
 function strokePath(){ ctx.beginPath(); path.forEach(function(p,i){ var s=img2scr(p); if(i)ctx.lineTo(s.x,s.y); else ctx.moveTo(s.x,s.y); }); ctx.stroke(); }
 function arrowHead(x,y,a){ var L=8*dpr; ctx.beginPath();ctx.moveTo(x-Math.cos(a-0.5)*L,y-Math.sin(a-0.5)*L);ctx.lineTo(x,y);ctx.lineTo(x-Math.cos(a+0.5)*L,y-Math.sin(a+0.5)*L);ctx.stroke(); }
 function drawArrows(){ ctx.strokeStyle="#16557a"; ctx.lineWidth=2.6*dpr; ctx.lineCap="round"; var acc=0, gap=72*dpr, prev=img2scr(path[0]);
@@ -231,7 +244,7 @@ function finishCalib(end){ var dx=end.x-calStartPx.x, dy=end.y-calStartPx.y, rea
   var sl=Math.max(0.3,Math.min(1.2,realDist/calSteps)); cfg.stepLen=sl; $("stepLen").value=sl.toFixed(2);
   var planAngle=(Math.atan2(dx,-dy)*180/Math.PI+360)%360;
   if(calHeadings.length){ var sx=0,sy=0; calHeadings.forEach(function(h){sx+=Math.cos(h*Math.PI/180);sy+=Math.sin(h*Math.PI/180);}); var avg=(Math.atan2(sy,sx)*180/Math.PI+360)%360;
-    rotOffset=Math.round(((avg-planAngle)%360+360)%360); $("rot").value=rotOffset; $("rotVal").textContent=rotOffset+"°"; }
+    setRotOffset(Math.round(((avg-planAngle)%360+360)%360)); }
   pos={x:end.x,y:end.y}; path=[{x:calStartPx.x,y:calStartPx.y},{x:end.x,y:end.y}]; steps=0; distM=0; lastAnchorIdx=1;
   if(calBounceSum>0) weinbergK=realDist/calBounceSum;
   setStatus("Kalibriert: "+sl.toFixed(2).replace(".",",")+" m/Schritt, Kurs-Offset "+rotOffset+"°.","on"); updateReadouts(); wizGo("done"); }
@@ -290,7 +303,10 @@ $("bMatch").onclick=function(){ matchOn=!matchOn; $("bMatch").textContent=matchO
 $("stepLen").onchange=function(e){ cfg.stepLen=parseFloat(e.target.value)||0.7; };
 $("sens").oninput=function(e){ cfg.sens=parseFloat(e.target.value); };
 $("turn").oninput=function(e){ turnGate=parseInt(e.target.value); };
-$("rot").oninput=function(e){ rotOffset=parseInt(e.target.value); $("rotVal").textContent=rotOffset+"°"; requestDraw(); };
+function setRotOffset(v){ rotOffset=((Math.round(v)%360)+360)%360; if($("rot"))$("rot").value=rotOffset; if($("rot2"))$("rot2").value=rotOffset;
+  if($("rotVal"))$("rotVal").textContent=rotOffset+"°"; if($("rotVal2"))$("rotVal2").textContent=rotOffset+"°"; requestDraw(); }
+$("rot").oninput=function(e){ setRotOffset(parseInt(e.target.value)); };
+$("rot2").oninput=function(e){ setRotOffset(parseInt(e.target.value)); };
 $("bPlan").onclick=function(){ openSettings(false); $("fPlan").click(); };
 $("bRecalib").onclick=function(){ if(!startPt){flash("Erst Startpunkt setzen");return;} openSettings(false); wizGo("calibwalk"); };
 $("bRestart").onclick=function(){ openSettings(false); startPt=null; pos=null; path=[]; steps=0; distM=0; lastAnchorIdx=0; weinbergK=0; calBounceSum=0; fheading=null; if(tracking)toggleRec(); rotWithMe=false; $("zfollow").classList.remove("act"); updateReadouts(); wizGo("welcome"); };
