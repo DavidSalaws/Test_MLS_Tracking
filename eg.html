@@ -83,6 +83,7 @@
       <button class="btn icon" id="bReset" title="Weg löschen">🗑</button>
     </div>
   </div>
+  <input type="file" id="fPlan" accept=".json,application/json" style="display:none">
   <div id="scrim"></div>
   <div id="settings" class="sheet">
     <div class="shead"><b>Einstellungen</b><button class="xclose" id="sClose">Fertig</button></div>
@@ -91,6 +92,7 @@
     <div class="field"><label>Empfindlichkeit (Schritte)</label><input type="range" id="sens" min="0.6" max="2.2" step="0.05" value="1.1"></div>
     <div class="field"><label>Drehfilter (gegen Drift beim Drehen)</label><input type="range" id="turn" min="30" max="120" step="5" value="55"></div>
     <div class="field"><label>Karte drehen (Kurs-Offset)</label><div><input type="range" id="rot" min="0" max="359" step="1" value="0"><span id="rotVal" style="font-family:var(--mono);color:var(--cyan-d)">0°</span></div></div>
+    <button class="mini" id="bPlan">Plan-Datei laden (.json)</button>
     <button class="mini" id="bRecalib">Laufkalibrierung wiederholen</button>
     <button class="mini" id="bRestart">Einrichtung neu starten</button>
   </div>
@@ -100,7 +102,7 @@
 var $=function(i){return document.getElementById(i);};
 var dpr=Math.min(window.devicePixelRatio||1,2.5);
 var cv=$("cv"), ctx=cv.getContext("2d");
-var walls=[], doors=[], planBounds=null;
+var walls=[], doors=[], rooms=[], planBounds=null;
 var view={scale:1,tx:0,ty:0}, didFit=false, viewRot=0, rotWithMe=false, M={a:1,b:0,c:0,d:1,e:0,f:0};
 var path=[], startPt=null, pos=null, placeMode="none", calState="idle";
 var calSteps=0, calHeadings=[], calStartPx=null, calBounceSum=0;
@@ -123,15 +125,19 @@ if(window.ResizeObserver){ new ResizeObserver(syncSize).observe($("stage")); }
 window.addEventListener("resize",syncSize);
 window.addEventListener("orientationchange",function(){setTimeout(syncSize,300);});
 
+function applyPlan(j){ var H=j.bounds.maxy;
+  walls=j.walls.map(function(w){return [w[0],H-w[1],w[2],H-w[3]];});
+  doors=(j.doors||[]).map(function(d){return [d[0],H-d[1]];});
+  rooms=(j.rooms||[]).map(function(poly){return poly.map(function(p){return [p[0],H-p[1]];});});
+  planBounds={minx:0,miny:0,maxx:j.bounds.maxx,maxy:j.bounds.maxy};
+  startPt=null; pos=null; path=[]; steps=0; distM=0; lastAnchorIdx=0;
+  didFit=false; fit(); didFit=true; setStatus("Grundriss "+(j.storey||"")+" geladen.","on"); }
 async function loadPlan(){
-  try{ var res=await fetch("plan.json",{cache:"no-store"}); if(!res.ok) throw new Error(res.status); var j=await res.json();
-    var H=j.bounds.maxy;
-    walls=j.walls.map(function(w){return [w[0],H-w[1],w[2],H-w[3]];});
-    doors=(j.doors||[]).map(function(d){return [d[0],H-d[1]];});
-    planBounds={minx:0,miny:0,maxx:j.bounds.maxx,maxy:j.bounds.maxy};
-    didFit=false; fit(); didFit=true; setStatus("Grundriss "+(j.storey||"")+" geladen.","on");
-  }catch(e){ setStatus("plan.json nicht gefunden – liegt sie neben eg.html im Repo?","err"); }
-}
+  try{ var res=await fetch("plan.json",{cache:"no-store"}); if(!res.ok) throw 0; applyPlan(await res.json()); }
+  catch(e){ setStatus("Kein plan.json gefunden – „Plan-Datei wählen“ nutzen.","warn"); } }
+$("fPlan").onchange=function(e){ var f=e.target.files[0]; if(!f)return; var r=new FileReader();
+  r.onload=function(){ try{ applyPlan(JSON.parse(r.result)); }catch(err){ setStatus("Plan-Datei ungültig: "+err.message,"err"); } };
+  r.readAsText(f); };
 
 function fit(){ if(!planBounds)return; var W=planBounds.maxx||1, H=planBounds.maxy||1;
   view.scale=Math.min(cv.width/W, cv.height/H)*0.92; view.tx=(cv.width-W*view.scale)/2; view.ty=(cv.height-H*view.scale)/2; requestDraw(); }
@@ -148,6 +154,7 @@ function zoomAt(f){ var cx=cv.width/2, cy=cv.height/2; view.tx=cx-(cx-view.tx)*f
 function rotatePlan(){ if(!planBounds)return; var H=planBounds.maxy; var T=function(x,y){return [H-y,x];};
   walls=walls.map(function(w){var a=T(w[0],w[1]),b=T(w[2],w[3]);return [a[0],a[1],b[0],b[1]];});
   doors=doors.map(function(d){return T(d[0],d[1]);});
+  rooms=rooms.map(function(poly){return poly.map(function(p){return T(p[0],p[1]);});});
   var tp=function(p){if(!p)return p;var a=T(p.x,p.y);return {x:a[0],y:a[1]};};
   if(startPt)startPt=tp(startPt); if(pos)pos=tp(pos); path=path.map(tp); if(calStartPx)calStartPx=tp(calStartPx);
   planBounds={minx:0,miny:0,maxx:planBounds.maxy,maxy:planBounds.maxx};
@@ -157,19 +164,22 @@ function pin(s,color,label){ ctx.lineWidth=4*dpr; ctx.strokeStyle="rgba(20,30,45
   ctx.fillStyle=color;ctx.beginPath();ctx.arc(s.x,s.y,8.5*dpr,0,7);ctx.fill(); ctx.lineWidth=2.5*dpr;ctx.strokeStyle="#fff";ctx.stroke();
   if(label){ ctx.fillStyle="#fff";ctx.font="bold "+(12*dpr)+"px sans-serif";ctx.textAlign="center";ctx.textBaseline="middle";ctx.fillText(label,s.x,s.y);} }
 function draw(){ computeM(); ctx.setTransform(1,0,0,1,0,0); ctx.clearRect(0,0,cv.width,cv.height);
-  if(walls.length){ ctx.strokeStyle="#e7edf3"; ctx.lineWidth=1.7*dpr; ctx.lineCap="round"; ctx.beginPath();
+  if(rooms.length){ ctx.fillStyle="#eef3f7"; ctx.strokeStyle="rgba(120,140,160,.4)"; ctx.lineWidth=1*dpr;
+    for(var ri=0;ri<rooms.length;ri++){ var poly=rooms[ri]; if(poly.length<3)continue; ctx.beginPath();
+      for(var pi=0;pi<poly.length;pi++){ var sp=img2scr({x:poly[pi][0],y:poly[pi][1]}); if(pi)ctx.lineTo(sp.x,sp.y); else ctx.moveTo(sp.x,sp.y);} ctx.closePath(); ctx.fill(); ctx.stroke(); } }
+  if(walls.length){ ctx.strokeStyle="#222b38"; ctx.lineWidth=1.9*dpr; ctx.lineCap="round"; ctx.beginPath();
     for(var i=0;i<walls.length;i++){ var w=walls[i]; var a=img2scr({x:w[0],y:w[1]}), b=img2scr({x:w[2],y:w[3]}); ctx.moveTo(a.x,a.y); ctx.lineTo(b.x,b.y);} ctx.stroke(); }
   if(path.length>1){ ctx.lineJoin="round";ctx.lineCap="round";
-    ctx.strokeStyle="rgba(0,0,0,.5)";ctx.lineWidth=5.5*dpr; strokePath();
-    ctx.strokeStyle="#29abe2";ctx.lineWidth=3*dpr; strokePath(); drawArrows(); }
-  if(startPt) pin(img2scr(startPt),"#9fb0c0","S");
+    ctx.strokeStyle="rgba(20,30,45,.30)";ctx.lineWidth=5.5*dpr; strokePath();
+    ctx.strokeStyle="#1f8cbb";ctx.lineWidth=3*dpr; strokePath(); drawArrows(); }
+  if(startPt) pin(img2scr(startPt),"#222b38","S");
   if(pos){ var s=img2scr(pos);
-    if(heading!=null){ var ang=(heading-rotOffset)*Math.PI/180+viewRot, L=30*dpr; ctx.strokeStyle="#fff";ctx.lineWidth=3.5*dpr;ctx.lineCap="round";
+    if(heading!=null){ var ang=(heading-rotOffset)*Math.PI/180+viewRot, L=30*dpr; ctx.strokeStyle="#222b38";ctx.lineWidth=3.5*dpr;ctx.lineCap="round";
       ctx.beginPath();ctx.moveTo(s.x,s.y);ctx.lineTo(s.x+Math.sin(ang)*L,s.y-Math.cos(ang)*L);ctx.stroke(); }
     pin(s,"#29abe2",null); } }
 function strokePath(){ ctx.beginPath(); path.forEach(function(p,i){ var s=img2scr(p); if(i)ctx.lineTo(s.x,s.y); else ctx.moveTo(s.x,s.y); }); ctx.stroke(); }
 function arrowHead(x,y,a){ var L=8*dpr; ctx.beginPath();ctx.moveTo(x-Math.cos(a-0.5)*L,y-Math.sin(a-0.5)*L);ctx.lineTo(x,y);ctx.lineTo(x-Math.cos(a+0.5)*L,y-Math.sin(a+0.5)*L);ctx.stroke(); }
-function drawArrows(){ ctx.strokeStyle="#bfe6f7"; ctx.lineWidth=2.6*dpr; ctx.lineCap="round"; var acc=0, gap=72*dpr, prev=img2scr(path[0]);
+function drawArrows(){ ctx.strokeStyle="#16557a"; ctx.lineWidth=2.6*dpr; ctx.lineCap="round"; var acc=0, gap=72*dpr, prev=img2scr(path[0]);
   for(var i=1;i<path.length;i++){ var cur=img2scr(path[i]); var dx=cur.x-prev.x,dy=cur.y-prev.y,len=Math.hypot(dx,dy); acc+=len;
     if(len>0.6&&acc>=gap){acc=0;arrowHead(cur.x,cur.y,Math.atan2(dy,dx));} prev=cur; } }
 
@@ -262,6 +272,7 @@ function renderWiz(){ show("wizard",wiz!=="done"); show("actions",wiz==="done");
   E.innerHTML=""; B.style.display="none"; P.style.display="block"; P.disabled=false;
   if(wiz==="welcome"){ S.textContent=""; T.textContent="Wegtracker EG"; X.textContent="Der Grundriss ist aus dem Modell geladen (echte Meter). In 3 Schritten startklar.";
     P.textContent="Los geht’s"; P.onclick=function(){ wizGo("sensors"); };
+    B.style.display="block"; B.textContent="Andere Plan-Datei"; B.onclick=function(){ $("fPlan").click(); };
   } else if(wiz==="sensors"){ S.textContent="Schritt 1 von 3"; T.textContent="Sensoren freigeben"; X.textContent="Erlaube Bewegungs- und Kompassdaten.";
     P.textContent="Aktivieren"; P.onclick=async function(){ if(await startSensors()) wizGo("start"); };
   } else if(wiz==="start"){ S.textContent="Schritt 2 von 3"; T.textContent="Startpunkt setzen"; X.textContent="Tippe deinen aktuellen Standort auf dem Plan. Zum Feinjustieren den Punkt verschieben.";
@@ -280,6 +291,7 @@ $("stepLen").onchange=function(e){ cfg.stepLen=parseFloat(e.target.value)||0.7; 
 $("sens").oninput=function(e){ cfg.sens=parseFloat(e.target.value); };
 $("turn").oninput=function(e){ turnGate=parseInt(e.target.value); };
 $("rot").oninput=function(e){ rotOffset=parseInt(e.target.value); $("rotVal").textContent=rotOffset+"°"; requestDraw(); };
+$("bPlan").onclick=function(){ openSettings(false); $("fPlan").click(); };
 $("bRecalib").onclick=function(){ if(!startPt){flash("Erst Startpunkt setzen");return;} openSettings(false); wizGo("calibwalk"); };
 $("bRestart").onclick=function(){ openSettings(false); startPt=null; pos=null; path=[]; steps=0; distM=0; lastAnchorIdx=0; weinbergK=0; calBounceSum=0; fheading=null; if(tracking)toggleRec(); rotWithMe=false; $("zfollow").classList.remove("act"); updateReadouts(); wizGo("welcome"); };
 
